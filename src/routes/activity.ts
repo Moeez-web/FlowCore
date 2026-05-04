@@ -1,13 +1,31 @@
 import { Hono } from 'hono'
-import { getActivityById, triageActivity } from '../db/queries.ts'
+import { getActivityById, triageActivity, countActivities } from '../db/queries.ts'
 import { activityDetail, summarySection } from '../views/activity-detail.ts'
 import { activityRow } from '../views/activity-row.ts'
 import { getOrGenerateSummary } from '../services/summary.ts'
+import { getSetting } from '../db/settings.ts'
+import { parseFilter, type Filter, DEFAULT_FILTER, ALL_STATUSES } from '../lib/filters.ts'
+import { html } from '../lib/html.ts'
 
 export const activityRoutes = new Hono()
 
 const ALLOWED_ACTIONS = ['useful', 'skip', 'unsave'] as const
 type TriageAction = (typeof ALLOWED_ACTIONS)[number]
+
+/** Render out-of-band count spans that htmx swaps into the status pills + feed count. */
+function statusCountOob(filter: Filter): string {
+  const counts: Record<string, number> = {}
+  for (const s of ALL_STATUSES) {
+    counts[s] = countActivities({ ...filter, status: s })
+  }
+  const pillHtml = ALL_STATUSES.map((s) => {
+    const c = counts[s]
+    return `<span id="status-count-${s}" hx-swap-oob="true" class="text-[10px] font-bold tabular-nums opacity-80">${c}</span>`
+  }).join('')
+  const total = counts[filter.status] ?? 0
+  const feedHtml = `<p id="feed-item-count" hx-swap-oob="true" class="text-xs text-slate-500 font-medium">${total} ${total === 1 ? 'item' : 'items'}</p>`
+  return pillHtml + feedHtml
+}
 
 function parseId(raw: string | undefined): number | null {
   if (!raw) return null
@@ -44,21 +62,23 @@ activityRoutes.post('/activities/:id/triage', async (c) => {
   const result = triageActivity(id, action as TriageAction)
   if (!result) return c.text('Not found', 404)
 
+  // Build out-of-band count update using the user's saved filter context
+  const saved = getSetting<Filter>('last_filter')
+  const filter: Filter = { ...DEFAULT_FILTER, ...(saved ?? {}), page: 1, cursor: undefined }
+  const counts = statusCountOob(filter)
+
   if (action === 'skip') {
-    // Row is gone from DB. Empty body causes outerHTML swap to remove the element.
-    return c.body('', 200)
+    // Row is gone from DB. Return just the OOB count update — the card element
+    // is removed by the empty swap, and htmx processes the OOB spans separately.
+    return c.html(counts)
   }
 
   if (action === 'unsave' && result.activity) {
-    // Status went back to 'new' — re-render the row so the saved pill clears
-    // and the Useful/Skip buttons replace Unsave/Remove.
-    return c.html(activityRow(result.activity, { context: 'board' }).value)
+    return c.html(activityRow(result.activity, { context: 'board' }).value + counts)
   }
 
   if (action === 'useful' && result.activity) {
-    // Keep the row visible with saved pill + Unsave/Remove buttons so the user
-    // can see what they just marked instead of having it vanish.
-    return c.html(activityRow(result.activity, { context: 'board' }).value)
+    return c.html(activityRow(result.activity, { context: 'board' }).value + counts)
   }
 
   return c.body('', 200)

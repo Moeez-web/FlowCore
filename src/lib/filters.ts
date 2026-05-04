@@ -27,6 +27,7 @@ export interface Filter {
   status: StatusFilter
   search: string
   page: number       // 1-based pagination
+  cursor?: string    // base64 "detected_at|id" for infinite scroll
 }
 
 const TYPE_SET = new Set<string>(ALL_SIGNAL_TYPES)
@@ -68,7 +69,9 @@ export function parseFilter(query: Record<string, string | string[]>): Filter {
   const pageRaw = Number.parseInt(String(query['page'] ?? '1'), 10)
   const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.min(pageRaw, 9999) : 1
 
-  return { signal_types, tags, days, status, search, page }
+  const cursor = String(query['cursor'] ?? '').trim() || undefined
+
+  return { signal_types, tags, days, status, search, page, cursor }
 }
 
 /** Serialize filter (everything except `page`) into URLSearchParams for link building. */
@@ -81,6 +84,7 @@ export function filterToQuery(f: Filter): URLSearchParams {
   if (f.days !== 30) p.set('days', String(f.days))
   if (f.status !== 'new') p.set('status', f.status)
   if (f.search) p.set('q', f.search)
+  if (f.cursor) p.set('cursor', f.cursor)
   return p
 }
 

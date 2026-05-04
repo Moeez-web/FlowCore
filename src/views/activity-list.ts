@@ -1,10 +1,18 @@
 import { html, type Raw } from '../lib/html.ts'
 import type { ActivityRow } from '../db/queries.ts'
 import { activityRow, type RowOpts } from './activity-row.ts'
-import { paginationBar, type PaginationOpts } from './pagination.ts'
+import type { Filter } from '../lib/filters.ts'
+import { filterToQuery } from '../lib/filters.ts'
+
+export interface InfiniteScrollOpts {
+  nextCursor: string | null
+  filter: Filter
+  baseUrl: string
+  total: number
+}
 
 export interface ListOpts extends RowOpts {
-  pagination?: PaginationOpts
+  infiniteScroll?: InfiniteScrollOpts
 }
 
 function emptyState(opts: RowOpts): Raw {
@@ -28,21 +36,65 @@ function emptyState(opts: RowOpts): Raw {
   </div>`
 }
 
+function sentinelHtml(is: InfiniteScrollOpts): Raw {
+  const p = filterToQuery(is.filter)
+  p.set('cursor', is.nextCursor!)
+  const nextUrl = `${is.baseUrl}?${p.toString()}`
+  return html`<div hx-get="${nextUrl}"
+               hx-trigger="intersect once"
+               hx-target="this"
+               hx-swap="outerHTML"
+               hx-indicator="#feed-loading"
+               class="break-inside-avoid"></div>`
+}
+
 export function activityList(rows: ActivityRow[], opts: ListOpts = {}): Raw {
   if (rows.length === 0) {
     return emptyState(opts)
   }
 
+  const is = opts.infiniteScroll
+  const total = is?.total ?? rows.length
+  const cards = rows.map((a) => activityRow(a, opts))
+  const sentinel = is?.nextCursor ? sentinelHtml(is) : ''
+  const endOfFeed = is && !is.nextCursor
+    ? html`<p class="text-center text-xs text-slate-400 pt-4 pb-2">You've reached the end of the feed.</p>`
+    : ''
+
   return html`<div class="space-y-3">
     <div class="flex items-center gap-2 px-1">
-      <p class="text-xs text-slate-500 font-medium">${String(opts.pagination?.total ?? rows.length)} ${(opts.pagination?.total ?? rows.length) === 1 ? 'item' : 'items'}</p>
+      <p id="feed-item-count" class="text-xs text-slate-500 font-medium">${String(total)} ${total === 1 ? 'item' : 'items'}</p>
     </div>
     <!-- CSS-columns masonry: cards pack by height instead of aligning to the
          tallest card in each row (which used to leave dead space under
          shorter cards). Reading order becomes column-major. -->
     <div id="feed-rows" class="columns-1 sm:columns-2 xl:columns-3 gap-3 sm:gap-4">
-      ${rows.map((a) => activityRow(a, opts))}
+      ${cards}
+      ${sentinel}
     </div>
-    ${opts.pagination ? paginationBar(opts.pagination) : ''}
+    ${endOfFeed}
   </div>`
+}
+
+/** Rendered by /activities/scroll — card fragments that replace the sentinel. */
+export function infiniteScrollFragment(
+  rows: ActivityRow[],
+  opts: RowOpts & { nextCursor: string | null; filter: Filter; baseUrl: string },
+): Raw {
+  const cards = rows.map((a) => activityRow(a, opts))
+  if (opts.nextCursor) {
+    const p = filterToQuery(opts.filter)
+    p.set('cursor', opts.nextCursor)
+    const nextUrl = `${opts.baseUrl}?${p.toString()}`
+    return html`${cards}
+      <div hx-get="${nextUrl}"
+           hx-trigger="intersect once"
+           hx-target="this"
+           hx-swap="outerHTML"
+           hx-indicator="#feed-loading"
+           class="break-inside-avoid"></div>`
+  }
+  // Last batch — no sentinel, just cards + end message
+  return html`${cards}
+    <p class="text-center text-xs text-slate-400 pt-4 pb-2 column-span-all">You've reached the end of the feed.</p>`
 }

@@ -172,27 +172,30 @@ export function layout(opts: { title: string; body: Raw; activeNav?: 'board' | '
       }
       .activity-card {
         transition: transform 150ms ease-out, box-shadow 150ms ease-out, border-color 150ms ease-out;
+      }
+      /* cardIn animation only on initial page load, not htmx partial swaps */
+      body.fc-initial-load #feed-rows > .activity-card {
         animation: cardIn 280ms ease-out backwards;
       }
       .activity-card:hover {
         transform: translateY(-2px);
         box-shadow: 0 10px 25px -8px rgb(15 23 42 / 0.12), 0 4px 8px -4px rgb(15 23 42 / 0.06);
       }
-      /* Stagger first 12 cards so they cascade in */
-      #feed-rows > .activity-card:nth-child(1)  { animation-delay: 0ms;   }
-      #feed-rows > .activity-card:nth-child(2)  { animation-delay: 30ms;  }
-      #feed-rows > .activity-card:nth-child(3)  { animation-delay: 60ms;  }
-      #feed-rows > .activity-card:nth-child(4)  { animation-delay: 90ms;  }
-      #feed-rows > .activity-card:nth-child(5)  { animation-delay: 120ms; }
-      #feed-rows > .activity-card:nth-child(6)  { animation-delay: 150ms; }
-      #feed-rows > .activity-card:nth-child(7)  { animation-delay: 180ms; }
-      #feed-rows > .activity-card:nth-child(8)  { animation-delay: 210ms; }
-      #feed-rows > .activity-card:nth-child(9)  { animation-delay: 240ms; }
-      #feed-rows > .activity-card:nth-child(10) { animation-delay: 270ms; }
-      #feed-rows > .activity-card:nth-child(11) { animation-delay: 300ms; }
-      #feed-rows > .activity-card:nth-child(12) { animation-delay: 330ms; }
+      /* Stagger first 12 cards on initial load only */
+      body.fc-initial-load #feed-rows > .activity-card:nth-child(1)  { animation-delay: 0ms;   }
+      body.fc-initial-load #feed-rows > .activity-card:nth-child(2)  { animation-delay: 30ms;  }
+      body.fc-initial-load #feed-rows > .activity-card:nth-child(3)  { animation-delay: 60ms;  }
+      body.fc-initial-load #feed-rows > .activity-card:nth-child(4)  { animation-delay: 90ms;  }
+      body.fc-initial-load #feed-rows > .activity-card:nth-child(5)  { animation-delay: 120ms; }
+      body.fc-initial-load #feed-rows > .activity-card:nth-child(6)  { animation-delay: 150ms; }
+      body.fc-initial-load #feed-rows > .activity-card:nth-child(7)  { animation-delay: 180ms; }
+      body.fc-initial-load #feed-rows > .activity-card:nth-child(8)  { animation-delay: 210ms; }
+      body.fc-initial-load #feed-rows > .activity-card:nth-child(9)  { animation-delay: 240ms; }
+      body.fc-initial-load #feed-rows > .activity-card:nth-child(10) { animation-delay: 270ms; }
+      body.fc-initial-load #feed-rows > .activity-card:nth-child(11) { animation-delay: 300ms; }
+      body.fc-initial-load #feed-rows > .activity-card:nth-child(12) { animation-delay: 330ms; }
 
-      .htmx-swapping { opacity: 0; transition: opacity 200ms ease-out; }
+      .htmx-swapping { }
 
       /* Load-more button — dim while htmx is in flight */
       .load-more-btn.htmx-request {
@@ -705,7 +708,7 @@ export function layout(opts: { title: string; body: Raw; activeNav?: 'board' | '
       [data-hint-active] svg { color: #fff; }
     </style>
   </head>
-  <body class="text-slate-900 min-h-screen antialiased">
+  <body class="text-slate-900 min-h-screen antialiased fc-initial-load">
     <div class="brand-strip"></div>
     <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 pt-4">
@@ -1182,6 +1185,15 @@ export function layout(opts: { title: string; body: Raw; activeNav?: 'board' | '
         else if (verb === 'delete' && new RegExp('^/signals/[0-9]+/tags/').test(path)) fcToast('Tag removed', 'success')
         else if (verb === 'delete' && new RegExp('^/signals/[0-9]+$').test(path)) fcToast('Signal deleted', 'success')
       })
+
+      // Remove initial-load animation class after first htmx swap so
+      // subsequent loads don't re-trigger cardIn animations.
+      document.addEventListener('htmx:afterSwap', function() {
+        document.body.classList.remove('fc-initial-load');
+      }, { once: true });
+
+      // ── Update status pill counts after triage without server round-trip ──
+      // Count updates are handled server-side via htmx out-of-band swaps (hx-swap-oob).
 
       // ── Preserve input focus + cursor position across htmx swaps ──
       // When a swap replaces the DOM element a user is typing into, re-focus

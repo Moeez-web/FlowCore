@@ -1,10 +1,9 @@
 import { html, type Raw } from '../lib/html.ts'
 import { type ActivityRow, SIGNAL_TYPE_LABELS } from '../db/queries.ts'
 import { ALL_SIGNAL_TYPES, type Filter, ALL_STATUSES, DATE_PRESETS } from '../lib/filters.ts'
-import { activityList } from './activity-list.ts'
+import { activityList, type InfiniteScrollOpts } from './activity-list.ts'
 import { layout } from './layout.ts'
 import { icon } from '../lib/icons.ts'
-import type { PaginationOpts } from './pagination.ts'
 
 const STATUS_LABELS: Record<string, string> = {
   all: 'All',
@@ -51,7 +50,7 @@ function statusPills(filter: Filter, counts?: { all: number; new: number; useful
         <input type="radio" name="status" value="${s}" ${checked ? 'checked' : ''} class="sr-only peer" />
         <span class="fc-pill-radio inline-flex items-center gap-1">
           ${STATUS_LABELS[s] ?? s}
-          ${count != null ? html`<span class="text-[10px] font-bold tabular-nums opacity-80">${String(count)}</span>` : ''}
+          ${count != null ? html`<span id="status-count-${s}" class="text-[10px] font-bold tabular-nums opacity-80">${String(count)}</span>` : ''}
         </span>
       </label>`
     })}
@@ -137,7 +136,7 @@ export function dashboardPage(opts: {
   filter: Filter
   tagsWithCounts: Array<{ name: string; count: number }>
   rows: ActivityRow[]
-  pagination?: PaginationOpts
+  infiniteScroll?: InfiniteScrollOpts
   statusCounts?: { all: number; new: number; useful: number }
   activeNav?: 'board' | 'useful'
   title?: string
@@ -149,7 +148,7 @@ export function dashboardPage(opts: {
    *  drops query params on the Useful page. */
   resetUrl?: string
 }): Raw {
-  const { filter, tagsWithCounts, rows, pagination, statusCounts } = opts
+  const { filter, tagsWithCounts, rows, infiniteScroll, statusCounts } = opts
   const activeNav = opts.activeNav ?? 'board'
   const title = opts.title ?? 'Board'
   const heading = opts.heading ?? 'Activity feed'
@@ -186,11 +185,11 @@ export function dashboardPage(opts: {
         <h3 class="text-sm font-bold text-slate-900">${heading}</h3>
         <span id="feed-loading" class="htmx-indicator items-center gap-1.5 text-xs text-blue-600 font-medium">
           <span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-          Updating
+          Loading more
         </span>
       </div>
       <div id="feed">
-        ${activityList(rows, { context: 'board', pagination })}
+        ${activityList(rows, { context: 'board', infiniteScroll })}
       </div>
     </div>`
 

@@ -353,6 +353,65 @@ function hydrateActivity(r: RawActivityRow): ActivityRow {
 const ACTIVITY_BASE_SELECT = ACTIVITY_BASE_SELECT_RAW
 
 export const PAGE_SIZE = 12
+export const INFINITE_SCROLL_BATCH_SIZE = 24
+
+export function encodeCursor(row: ActivityRow): string {
+  return Buffer.from(`${row.detected_at}|${row.id}`).toString('base64')
+}
+
+function decodeCursor(cursor: string): { detectedAt: string; id: number } {
+  const decoded = Buffer.from(cursor, 'base64').toString('utf-8')
+  const sep = decoded.lastIndexOf('|')
+  return { detectedAt: decoded.slice(0, sep), id: parseInt(decoded.slice(sep + 1), 10) }
+}
+
+export function getActivitiesAfterCursor(
+  filter: Filter,
+  cursor: string | undefined,
+  limit = INFINITE_SCROLL_BATCH_SIZE,
+): ActivityRow[] {
+  const { sql: where, params } = buildWhere(filter)
+  const extraParams: unknown[] = []
+  let cursorClause = ''
+  if (cursor) {
+    const c = decodeCursor(cursor)
+    cursorClause = ` AND (a.detected_at < ? OR (a.detected_at = ? AND a.id < ?))`
+    extraParams.push(c.detectedAt, c.detectedAt, c.id)
+  }
+  const stmt = db.prepare(`
+    ${ACTIVITY_BASE_SELECT}
+    ${where}${cursorClause}
+    ORDER BY a.detected_at DESC, a.id DESC
+    LIMIT ?
+  `)
+  return (stmt.all(...params, ...extraParams, limit) as RawActivityRow[]).map(hydrateActivity)
+}
+
+export function getSavedActivitiesAfterCursor(
+  opts: { typeFilter?: SignalType | null; cursor?: string; limit?: number } = {},
+): ActivityRow[] {
+  let where = `WHERE a.status = 'useful'`
+  const params: unknown[] = []
+  const extraParams: unknown[] = []
+  if (opts.typeFilter) {
+    where += ` AND s.type = ?`
+    params.push(opts.typeFilter)
+  }
+  let cursorClause = ''
+  if (opts.cursor) {
+    const c = decodeCursor(opts.cursor)
+    cursorClause = ` AND (a.detected_at < ? OR (a.detected_at = ? AND a.id < ?))`
+    extraParams.push(c.detectedAt, c.detectedAt, c.id)
+  }
+  const limit = opts.limit ?? INFINITE_SCROLL_BATCH_SIZE
+  const stmt = db.prepare(`
+    ${ACTIVITY_BASE_SELECT}
+    ${where}${cursorClause}
+    ORDER BY a.detected_at DESC, a.id DESC
+    LIMIT ?
+  `)
+  return (stmt.all(...params, ...extraParams, limit) as RawActivityRow[]).map(hydrateActivity)
+}
 
 export function getActivities(filter: Filter, limit = PAGE_SIZE): ActivityRow[] {
   const { sql: where, params } = buildWhere(filter)
