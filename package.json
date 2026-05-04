@@ -1,0 +1,28 @@
+{
+  "name": "flowcore-water",
+  "version": "0.1.0",
+  "description": "FlowCore Marketing Sensor — competitor intelligence dashboard",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "seed": "tsx src/seed/seed.ts",
+    "db:reset": "rm -f data/flowcore.db && npm run seed"
+  },
+  "engines": {
+    "node": ">=22 <26"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "better-sqlite3": "^12.9.0",
+    "dotenv": "^16.4.5",
+    "hono": "^4.6.14",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
