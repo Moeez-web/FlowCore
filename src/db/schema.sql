@@ -11,9 +11,7 @@ CREATE TABLE IF NOT EXISTS signals (
                     'google_ads',
                     'instagram_account',
                     'tiktok_account',
-                    'youtube_channel',
-                    'seo_keyword',
-                    'backlink_profile'
+                    'youtube_channel'
                   )),
   target          TEXT NOT NULL,
   vertical        TEXT CHECK (vertical IN ('well', 'plumbing')),
@@ -75,3 +73,11 @@ CREATE TABLE IF NOT EXISTS settings (
   value_json      TEXT NOT NULL,
   updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS keywords (
+  id          INTEGER PRIMARY KEY,
+  phrase      TEXT NOT NULL UNIQUE,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_keywords_phrase ON keywords(phrase);

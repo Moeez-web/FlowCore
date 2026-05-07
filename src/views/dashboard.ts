@@ -15,7 +15,6 @@ const TYPE_ICON: Record<string, string> = {
   website: 'website', meta_ads: 'meta_ads', google_ads: 'google_ads',
   instagram_account: 'instagram', tiktok_account: 'tiktok',
   youtube_channel: 'youtube_shorts',
-  seo_keyword: 'seo', backlink_profile: 'seo',
 }
 
 // Inline search input — full width on mobile, flexes to fill remaining space on desktop.
@@ -57,16 +56,8 @@ function statusPills(filter: Filter, counts?: { all: number; new: number; useful
   </div>`
 }
 
-// Signal-types as inline pills. "All" is a sentinel pill — it's active when no
-// individual types are selected (which the server treats as "show everything").
-// Clicking "All" un-checks every individual type pill in one go.
 function typePills(filter: Filter): Raw {
   const allSelected = filter.signal_types.length === ALL_SIGNAL_TYPES.length
-  // Server-side: rawTypes.length === 0 falls back to ALL_SIGNAL_TYPES (no filter).
-  // The active/inactive style of the All button is now driven by CSS :has()
-  // so it updates in real time as the user toggles individual type checkboxes
-  // without needing a server round-trip.
-  // Toggle every type checkbox + fire one change event (htmx hits server once).
   const clearAllJs =
     `const f=this.closest('form');Array.from(f.elements).forEach(function(c){if(c.name==='type')c.checked=false});f.dispatchEvent(new Event('change',{bubbles:true}))`
 
@@ -104,7 +95,7 @@ function tagFiltersDropdown(filter: Filter, tagsWithCounts: Array<{ name: string
       ${selectedCount > 0
         ? html`<span class="inline-flex items-center justify-center min-w-[18px] h-4 px-1 bg-blue-600 text-white text-[10px] font-bold rounded-full">${String(selectedCount)}</span>`
         : html`<span class="text-slate-400">#</span>`}
-      <span class="text-slate-700">${triggerLabel}</span>
+      <span class="text-slate-700" data-tag-trigger-label>${triggerLabel}</span>
       <span class="text-slate-400">▾</span>
     </button>
     <div id="tag-menu"

@@ -1,12 +1,13 @@
 import { Hono } from 'hono'
-import { parseFilter, type Filter, DEFAULT_FILTER, filterToQuery } from '../lib/filters.ts'
+import { parseFilter, type Filter, DEFAULT_FILTER, filterToQuery, ALL_STATUSES } from '../lib/filters.ts'
 import {
-  getActivities, getActivitiesAfterCursor, getSavedActivitiesAfterCursor,
+  getActivitiesAfterCursor, getSavedActivitiesAfterCursor,
   countActivities, listTagsWithCounts, INFINITE_SCROLL_BATCH_SIZE,
   encodeCursor, PAGE_SIZE,
 } from '../db/queries.ts'
 import { dashboardPage } from '../views/dashboard.ts'
 import { activityList, infiniteScrollFragment } from '../views/activity-list.ts'
+
 import { getSetting, setSetting, clearSetting } from '../db/settings.ts'
 
 export const dashboardRoutes = new Hono()
@@ -44,6 +45,15 @@ function statusCounts(filter: Filter): { all: number; new: number; useful: numbe
     new:    countActivities({ ...filter, status: 'new' }),
     useful: countActivities({ ...filter, status: 'useful' }),
   }
+}
+
+function statusCountOobHtml(filter: Filter, counts: { all: number; new: number; useful: number }): string {
+  const pills = ALL_STATUSES.map((s) =>
+    `<span id="status-count-${s}" hx-swap-oob="true" class="text-[10px] font-bold tabular-nums opacity-80">${counts[s]}</span>`
+  ).join('')
+  const total = counts[filter.status] ?? 0
+  const feed = `<p id="feed-item-count" hx-swap-oob="true" class="text-xs text-slate-500 font-medium">${total} ${total === 1 ? 'item' : 'items'}</p>`
+  return pills + feed
 }
 
 function buildInfiniteScroll(
@@ -126,17 +136,19 @@ dashboardRoutes.get('/useful', (c) => {
 dashboardRoutes.get('/activities', (c) => {
   const filter = parseFilter(queriesObj(c))
   setSetting(LAST_FILTER_KEY, { ...filter, page: 1, cursor: undefined })
+  const isHtmx = c.req.header('HX-Request') === 'true'
+
   const rows = getActivitiesAfterCursor(filter, undefined)
   const total = countActivities(filter)
-  const isHtmx = c.req.header('HX-Request') === 'true'
   const infiniteScroll = buildInfiniteScroll(rows, filter, total, '/activities', '/activities/scroll')
 
   if (isHtmx) {
+    const counts = statusCounts(filter)
     return c.html(
       activityList(rows, {
         context: 'board',
         infiniteScroll,
-      }).value,
+      }).value + statusCountOobHtml(filter, counts),
     )
   }
 

@@ -95,6 +95,7 @@ const ACTIVITY_BADGES: Record<string, BadgeSpec> = {
   // Instagram
   instagram_account_post:  { label: 'New post',          tone: 'pink' },
   new_post:                { label: 'New post',          tone: 'pink' },
+  new_reel:                { label: 'New reel',          tone: 'pink' },
   post_deleted:            { label: 'Post removed',      tone: 'rose' },
   post_edited:             { label: 'Post edited',       tone: 'amber' },
   // TikTok
@@ -133,8 +134,7 @@ function activityBadge(activityType: string): Raw {
 }
 
 function cardHeader(a: ActivityRow): Raw {
-  const t = TYPE_STYLES[a.signal_type] ?? TYPE_STYLES['website']!
-  const hasSummary = a.summary_text != null && a.summary_text.length > 0
+  const t = TYPE_STYLES[visualType(a)] ?? TYPE_STYLES['website']!
   return html`<div class="flex items-start justify-between gap-2 mb-2 flex-wrap">
     <div class="flex items-center gap-2 text-xs flex-wrap">
       ${activityBadge(a.activity_type)}
@@ -150,9 +150,6 @@ function cardHeader(a: ActivityRow): Raw {
       <span class="font-mono text-[11px] text-slate-500 truncate max-w-[180px]">${a.signal_target}</span>
       <span class="text-slate-300">·</span>
       <span class="text-slate-500">${timeAgo(a.detected_at)}</span>
-      ${hasSummary
-        ? html`<span class="inline-flex items-center gap-0.5 text-[10px] uppercase tracking-wide text-blue-600 font-bold">${icon('sparkle')}AI</span>`
-        : ''}
     </div>
     ${a.status === 'useful'
       ? html`<span class="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0 select-none cursor-default">
@@ -391,22 +388,23 @@ function articleModal(a: ActivityRow, p: Record<string, unknown>, fullText: stri
   </div>`
 }
 
-// Meta ad — shows real ad data (page, primary text, headline, optional
-// creative). Real ad creative images can't be embedded without scraper access
-// (Meta Ad Library uses signed CDN URLs + iframe-blocks the public viewer).
-// When Apify Meta Ad Library scraper is wired, raw_payload['creative_url']
-// will populate the <img> slot with the actual ad image automatically.
+// Meta ad — Facebook-style card with page header, ad body text, media
+// (video with inline playback or image creative), headline, and CTA.
 function cardMetaAd(a: ActivityRow, p: Record<string, unknown>): Raw {
   const creative = String(p['creative_url'] ?? a.thumbnail_url ?? '')
+  const rawVideoUrl = typeof p['video_url'] === 'string' && p['video_url'] ? String(p['video_url']) : null
+  const videoUrl = rawVideoUrl ? `/proxy/media?url=${encodeURIComponent(rawVideoUrl)}` : null
   const headline = String(p['headline'] ?? a.title)
   const primaryText = String(p['primary_text'] ?? '')
+  const displayFormat = String(p['display_format'] ?? '')
   const platforms = Array.isArray(p['platforms']) ? (p['platforms'] as string[]).join(' · ') : 'Facebook · Instagram'
   const pageName = String(p['page_name'] ?? a.signal_target)
   const stillActive = p['still_active'] === true
+  const hasStatus = p['still_active'] !== undefined
   let landingHost = ''
   try { landingHost = new URL(String(p['landing_url'] ?? a.source_url ?? '')).hostname.replace(/^www\./, '') } catch { /* keep */ }
-  // Page-search URL for live Ad Library results (always loads, scoped to US).
   const pageSearchUrl = `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=US&search_type=keyword_unordered&q=${encodeURIComponent(pageName)}`
+  const isVideo = displayFormat === 'VIDEO' || !!videoUrl
   return html`<div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
     <div class="flex items-center gap-2 px-3 py-2.5 border-b border-slate-100">
       <span class="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 text-white flex items-center justify-center text-sm font-bold shrink-0">
@@ -418,27 +416,45 @@ function cardMetaAd(a: ActivityRow, p: Record<string, unknown>): Raw {
           Sponsored · <span class="text-slate-400 truncate">${platforms}</span>
         </p>
       </div>
-      ${stillActive
+      ${hasStatus && stillActive
         ? html`<span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded inline-flex items-center gap-1">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> LIVE
           </span>`
-        : html`<span class="text-[10px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">○ Off</span>`}
+        : hasStatus && !stillActive
+          ? html`<span class="text-[10px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">Ended</span>`
+          : ''}
     </div>
     ${primaryText
-      ? html`<p class="text-[13px] text-slate-700 px-3 py-2.5 line-clamp-3 leading-snug">${primaryText}</p>`
+      ? html`<div class="px-3 py-2.5 text-[13px] text-slate-700 leading-snug max-h-[120px] overflow-y-auto">${primaryText}</div>`
       : ''}
-    <div class="aspect-[1.91/1] bg-gradient-to-br from-slate-100 to-slate-200 relative overflow-hidden">
-      ${creative
-        ? html`<img src="${creative}" alt="" class="absolute inset-0 w-full h-full object-cover" />`
-        : html`<div class="absolute inset-0 flex flex-col items-center justify-center text-slate-400">
-            <span class="text-3xl mb-1">${icon('meta_ads')}</span>
-            <span class="text-[10px] uppercase tracking-wider font-bold">Creative not in payload</span>
-            <span class="text-[10px] text-slate-400 mt-0.5">view live ad to see creative</span>
-          </div>`}
-    </div>
+    ${isVideo && videoUrl
+      ? html`<div class="w-full aspect-video bg-black relative" data-video-thumb data-video-src="${videoUrl}">
+          ${creative
+            ? html`<img src="${creative}" alt="" class="absolute inset-0 w-full h-full object-cover"
+                        onerror="this.style.display='none'" />`
+            : ''}
+          <button type="button" data-play-video
+                  class="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/50 transition-colors"
+                  aria-label="Play video">
+            <span class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-white/90 shadow-lg">
+              <span class="ml-1 w-0 h-0 border-l-[14px] border-l-blue-600 border-y-[10px] border-y-transparent"></span>
+            </span>
+          </button>
+        </div>`
+      : creative
+        ? html`<div class="w-full aspect-[1.91/1] bg-gradient-to-br from-blue-50 to-indigo-100 relative overflow-hidden">
+            <img src="${creative}" alt="" class="absolute inset-0 w-full h-full object-cover"
+                 onerror="this.style.display='none'" />
+          </div>`
+        : html`<div class="w-full aspect-[1.91/1] bg-gradient-to-br from-blue-50 to-indigo-100 flex flex-col items-center justify-center text-blue-400">
+            <span class="text-4xl mb-2">${icon('meta_ads')}</span>
+            <span class="text-[11px] font-bold">${displayFormat || 'Ad'} creative</span>
+          </div>`
+    }
     <div class="px-3 py-2.5 bg-slate-50 border-t border-slate-100">
       ${landingHost ? html`<p class="text-[10px] uppercase tracking-wider text-slate-400">${landingHost}</p>` : ''}
-      <p class="text-sm font-bold text-slate-900 line-clamp-2">${headline}</p>
+      <p class="text-sm font-bold text-slate-900">${headline}</p>
+      ${p['cta_text'] ? html`<p class="text-[11px] text-blue-600 font-semibold mt-1">${String(p['cta_text'])}</p>` : ''}
     </div>
     <a href="${pageSearchUrl}" target="_blank" rel="noopener"
        class="block bg-blue-600 hover:bg-blue-700 text-white text-center text-xs font-bold px-3 py-2.5 transition-colors">
@@ -456,15 +472,15 @@ function cardGoogleAd(a: ActivityRow, p: Record<string, unknown>): Raw {
   const id = String(a.id)
   const headline = String(p['headline'] ?? a.title)
   const description = String(p['description'] ?? '')
-  const url = String(p['landing_page_url'] ?? a.source_url ?? '')
-  const changeType = String(p['change_type'] ?? '').replace(/_/g, ' ')
+  const url = String(p['url'] ?? p['landing_page_url'] ?? a.source_url ?? '')
+  const position = typeof p['position'] === 'number' ? Number(p['position']) : null
   let host = url
   try { host = new URL(url).hostname.replace(/^www\./, '') } catch { /* keep */ }
   const transparencyUrl = host
     ? `https://adstransparency.google.com/?region=US&domain=${encodeURIComponent(host)}`
     : 'https://adstransparency.google.com/?region=US'
   return html`<div class="flex flex-col gap-2">
-    <p class="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Google ad ${changeType ? `· ${changeType}` : ''}</p>
+    <p class="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Google ad ${position ? `· #${position}` : ''}</p>
     <a href="${url}" target="_blank" rel="noopener"
        class="block bg-white border border-slate-200 rounded-lg p-3.5 shadow-sm hover:border-slate-300 hover:shadow-md transition-all"
        hx-on:click="event.stopPropagation()">
@@ -510,15 +526,19 @@ function cardGoogleAd(a: ActivityRow, p: Record<string, unknown>): Raw {
 }
 
 // Instagram — IG post mockup: gradient-ringed avatar + handle, square image,
-// IG action row (heart / comment / send) and "X likes" line.
+// IG action row (heart / comment / send) and "X likes" line. Supports reels,
+// carousels (dot indicator), and hashtags.
 function cardInstagramPost(a: ActivityRow, p: Record<string, unknown>): Raw {
   const image = String(p['image_url'] ?? a.thumbnail_url ?? '')
+  const videoUrl = typeof p['video_url'] === 'string' && p['video_url'] ? String(p['video_url']) : null
   const handle = String(p['handle'] ?? a.signal_target)
   const caption = String(p['caption'] ?? a.title)
   const likes = Number(p['like_count'] ?? 0)
   const comments = Number(p['comment_count'] ?? 0)
-  const igShortcode = instagramShortcode(a.source_url) ?? String(p['shortcode'] ?? '')
-  const embedUrl = igShortcode ? `https://www.instagram.com/p/${igShortcode}/embed/` : ''
+  const videoViews = Number(p['video_views'] ?? 0)
+  const isReel = p['product_type'] === 'clips'
+  const isSidecar = p['post_type'] === 'Sidecar' || (Array.isArray(p['child_posts']) && (p['child_posts'] as unknown[]).length > 0)
+  const hashtags = Array.isArray(p['hashtags']) ? (p['hashtags'] as string[]).slice(0, 3) : []
   return html`<div class="border border-slate-200 rounded-lg overflow-hidden bg-white">
     <div class="flex items-center gap-2 px-3 py-2 border-b border-slate-100">
       <span class="inline-block p-[2px] rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600">
@@ -529,22 +549,30 @@ function cardInstagramPost(a: ActivityRow, p: Record<string, unknown>): Raw {
         </span>
       </span>
       <p class="text-[13px] font-semibold text-slate-900 flex-1 truncate">${handle}</p>
+      ${isReel
+        ? html`<span class="inline-flex items-center text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-gradient-to-r from-pink-500 to-purple-500 text-white">Reel</span>`
+        : isSidecar
+          ? html`<span class="text-slate-400 text-sm leading-none" title="Carousel">▦</span>`
+          : ''}
       <span class="text-slate-400 text-base leading-none">···</span>
     </div>
     <div class="aspect-square bg-gradient-to-br from-yellow-200 via-pink-200 to-purple-300 relative overflow-hidden"
-         data-video-thumb data-embed-url="${embedUrl}">
+         data-video-thumb ${videoUrl ? html`data-video-src="${videoUrl}"` : ''}>
       ${image
-        ? html`<img src="${image}" alt="" class="absolute inset-0 w-full h-full object-cover" />`
+        ? html`<img src="${image}" alt="" class="absolute inset-0 w-full h-full object-cover"
+                    onerror="this.style.display='none'" />`
         : html`<div class="absolute inset-0 flex items-center justify-center text-white/80 text-5xl pointer-events-none">${icon('instagram')}</div>`}
-      ${embedUrl
+      ${videoUrl
         ? html`<button type="button" data-play-video
-                       class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/30 hover:bg-black/50 transition-colors"
-                       aria-label="Load Instagram post">
+                       class="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/50 transition-colors"
+                       aria-label="Play video">
             <span class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-white shadow-lg">
               <span class="ml-1 w-0 h-0 border-l-[14px] border-l-pink-600 border-y-[10px] border-y-transparent"></span>
             </span>
-            <span class="text-[11px] font-bold uppercase tracking-wider text-white drop-shadow">Tap to load post</span>
           </button>`
+        : ''}
+      ${isSidecar
+        ? html`<span class="absolute top-2 right-2 inline-flex items-center justify-center w-7 h-7 rounded-full bg-black/50 text-white text-xs">▦</span>`
         : ''}
     </div>
     <div class="px-3 pt-2 pb-1 flex items-center gap-3 text-slate-700">
@@ -553,12 +581,19 @@ function cardInstagramPost(a: ActivityRow, p: Record<string, unknown>): Raw {
       <span class="text-base leading-none">↗</span>
     </div>
     <div class="px-3 pb-2">
-      <p class="text-[13px] font-bold text-slate-900">${fmtCount(likes)} likes</p>
+      <p class="text-[13px] font-bold text-slate-900">
+        ${fmtCount(likes)} likes${videoViews > 0 ? html` <span class="text-slate-400 mx-0.5">·</span> ▶ ${fmtCount(videoViews)}` : ''}
+      </p>
       ${caption
         ? html`<p class="text-[13px] text-slate-700 line-clamp-2 mt-0.5"><span class="font-semibold">${handle}</span> ${caption}</p>`
         : ''}
       ${comments > 0
         ? html`<p class="text-[11px] text-slate-400 mt-1">View all ${fmtCount(comments)} comments</p>`
+        : ''}
+      ${hashtags.length > 0
+        ? html`<div class="flex items-center gap-1 mt-1.5 flex-wrap">
+            ${hashtags.map((tag) => html`<span class="text-[10px] font-semibold text-blue-500">#${tag}</span>`)}
+          </div>`
         : ''}
     </div>
     <div class="px-3 pb-2 border-t border-slate-100 pt-2">
@@ -571,6 +606,7 @@ function cardInstagramPost(a: ActivityRow, p: Record<string, unknown>): Raw {
 // engagement row below. Card auto-sizes to its natural height in the grid.
 function cardTikTok(a: ActivityRow, p: Record<string, unknown>): Raw {
   const thumb = String(p['cover_url'] ?? p['thumbnail_url'] ?? a.thumbnail_url ?? '')
+  const videoUrl = typeof p['video_url'] === 'string' && p['video_url'] ? String(p['video_url']) : null
   const isViral = !!p['is_viral']
   const handle = String(p['handle'] ?? a.signal_target)
   const caption = String(p['caption'] ?? a.title)
@@ -579,19 +615,18 @@ function cardTikTok(a: ActivityRow, p: Record<string, unknown>): Raw {
   const comments = Number(p['comment_count'] ?? 0)
   const shares = Number(p['share_count'] ?? 0)
   const duration = typeof p['duration_sec'] === 'number' ? Number(p['duration_sec']) : null
-  const tikId = tiktokVideoId(a.source_url) ?? String(p['video_id'] ?? '')
-  const embedUrl = tikId ? `https://www.tiktok.com/embed/v2/${tikId}` : ''
   return html`<div class="flex flex-col gap-3">
     <div class="relative w-full aspect-[9/16] rounded-xl overflow-hidden shadow-md ring-1 ring-black/10
                 bg-gradient-to-br from-slate-900 via-fuchsia-900 to-pink-900"
-         data-video-thumb data-embed-url="${embedUrl}">
-      ${thumb ? html`<img src="${thumb}" alt="" class="absolute inset-0 w-full h-full object-cover" />` : ''}
+         data-video-thumb ${videoUrl ? html`data-video-src="${videoUrl}"` : ''}>
+      ${thumb ? html`<img src="${thumb}" alt="" class="absolute inset-0 w-full h-full object-cover"
+                           onerror="this.style.display='none'" />` : ''}
       <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 pointer-events-none"></div>
       <span class="absolute top-2 right-2 text-white pointer-events-none">${icon('tiktok')}</span>
       ${isViral
         ? html`<span class="absolute top-2 left-2 inline-flex items-center gap-0.5 text-[10px] font-black bg-gradient-to-r from-pink-500 to-fuchsia-500 text-white px-2 py-0.5 rounded shadow-md pointer-events-none">🔥 VIRAL</span>`
         : ''}
-      ${embedUrl
+      ${videoUrl
         ? html`<button type="button" data-play-video
                        class="absolute inset-0 flex items-center justify-center group/play"
                        aria-label="Play TikTok">
@@ -639,7 +674,8 @@ function cardYouTube(a: ActivityRow, p: Record<string, unknown>): Raw {
     <div class="relative w-full aspect-video rounded-lg overflow-hidden shadow-md ring-1 ring-black/10
                 bg-gradient-to-br from-slate-800 to-slate-950"
          data-video-thumb data-embed-url="${embedUrl}">
-      ${thumb ? html`<img src="${thumb}" alt="" class="absolute inset-0 w-full h-full object-cover" />` : ''}
+      ${thumb ? html`<img src="${thumb}" alt="" class="absolute inset-0 w-full h-full object-cover"
+                           onerror="this.style.display='none'" />` : ''}
       <div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent pointer-events-none"></div>
       ${embedUrl
         ? html`<button type="button" data-play-video
@@ -726,8 +762,24 @@ const CARD_BODIES: Record<string, (a: ActivityRow, p: Record<string, unknown>) =
   instagram_account: cardInstagramPost,
   tiktok_account:    cardTikTok,
   youtube_channel:   cardYouTube,
-  seo_keyword:       cardSeoRank,
-  backlink_profile:  cardBacklink,
+}
+
+const SEO_ACTIVITY_TYPES = new Set(['keyword_rank_gain', 'keyword_rank_loss'])
+const BACKLINK_ACTIVITY_TYPES = new Set(['backlink_acquired', 'backlink_lost', 'anchor_text_changed'])
+
+// SEO and backlink activities are now tied to website signals but need their
+// own visual style and card renderer. Route by activity_type when applicable.
+function visualType(a: ActivityRow): string {
+  if (SEO_ACTIVITY_TYPES.has(a.activity_type)) return 'seo_keyword'
+  if (BACKLINK_ACTIVITY_TYPES.has(a.activity_type)) return 'backlink_profile'
+  return a.signal_type
+}
+
+function renderBody(a: ActivityRow, payload: Record<string, unknown>): Raw {
+  if (SEO_ACTIVITY_TYPES.has(a.activity_type)) return cardSeoRank(a, payload)
+  if (BACKLINK_ACTIVITY_TYPES.has(a.activity_type)) return cardBacklink(a, payload)
+  const fn = CARD_BODIES[a.signal_type] ?? CARD_BODIES['website']!
+  return fn(a, payload)
 }
 
 // ────────────────── Public render ──────────────────
@@ -739,8 +791,8 @@ export interface RowOpts {
 
 export function activityRow(a: ActivityRow, opts: RowOpts = {}): Raw {
   const context = opts.context ?? 'board'
-  const t = TYPE_STYLES[a.signal_type] ?? TYPE_STYLES['website']!
-  const renderBody = CARD_BODIES[a.signal_type] ?? CARD_BODIES['website']!
+  const vt = visualType(a)
+  const t = TYPE_STYLES[vt] ?? TYPE_STYLES['website']!
   const payload = safePayload(a)
 
   return html`<article id="activity-${String(a.id)}"

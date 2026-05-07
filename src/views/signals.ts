@@ -8,7 +8,6 @@ const TYPE_ICON: Record<string, string> = {
   website: 'website', meta_ads: 'meta_ads', google_ads: 'google_ads',
   instagram_account: 'instagram', tiktok_account: 'tiktok',
   youtube_channel: 'youtube_shorts',
-  seo_keyword: 'seo', backlink_profile: 'seo',
 }
 
 const TYPE_TINT: Record<string, string> = {
@@ -18,8 +17,6 @@ const TYPE_TINT: Record<string, string> = {
   instagram_account: 'text-pink-600',
   tiktok_account:    'text-pink-600',
   youtube_channel:   'text-red-600',
-  seo_keyword:       'text-purple-600',
-  backlink_profile:  'text-indigo-600',
 }
 
 // ─────────────────────────── Signal row (flat list) ───────────────────────────

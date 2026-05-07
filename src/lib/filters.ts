@@ -5,8 +5,6 @@ export const ALL_SIGNAL_TYPES = [
   'instagram_account',
   'tiktok_account',
   'youtube_channel',
-  'seo_keyword',
-  'backlink_profile',
 ] as const
 export type SignalTypeFilter = typeof ALL_SIGNAL_TYPES[number]
 
@@ -21,13 +19,14 @@ export const DATE_PRESETS = [1, 3, 7, 30] as const
 export type DayPreset = typeof DATE_PRESETS[number]
 
 export interface Filter {
-  signal_types: SignalTypeFilter[]
+  signal_types: string[]
   tags: string[]     // filter by tag names (signal_tags JOIN tags)
   days: number
   status: StatusFilter
   search: string
   page: number       // 1-based pagination
   cursor?: string    // base64 "detected_at|id" for infinite scroll
+  seo_filter: 'all' | 'gained' | 'lost'
 }
 
 const TYPE_SET = new Set<string>(ALL_SIGNAL_TYPES)
@@ -40,6 +39,7 @@ export const DEFAULT_FILTER: Filter = {
   status: 'new',
   search: '',
   page: 1,
+  seo_filter: 'all',
 }
 
 function asArray(v: string | string[] | undefined): string[] {
@@ -48,10 +48,9 @@ function asArray(v: string | string[] | undefined): string[] {
 }
 
 export function parseFilter(query: Record<string, string | string[]>): Filter {
-  // Accept both `type=` (new) and `channel=` (legacy form input names)
   const rawTypes = [...asArray(query['type']), ...asArray(query['channel'])]
-    .filter((t): t is SignalTypeFilter => TYPE_SET.has(t))
-  const signal_types: SignalTypeFilter[] =
+    .filter((t) => TYPE_SET.has(t))
+  const signal_types: string[] =
     rawTypes.length > 0 ? rawTypes : [...ALL_SIGNAL_TYPES]
 
   const tags = asArray(query['tag'])
@@ -71,7 +70,11 @@ export function parseFilter(query: Record<string, string | string[]>): Filter {
 
   const cursor = String(query['cursor'] ?? '').trim() || undefined
 
-  return { signal_types, tags, days, status, search, page, cursor }
+  const seoFilterRaw = String(query['seo_filter'] ?? 'all')
+  const seoFilterValid = new Set(['all', 'gained', 'lost'])
+  const seo_filter: 'all' | 'gained' | 'lost' = seoFilterValid.has(seoFilterRaw) ? (seoFilterRaw as 'all' | 'gained' | 'lost') : 'all'
+
+  return { signal_types, tags, days, status, search, page, cursor, seo_filter }
 }
 
 /** Serialize filter (everything except `page`) into URLSearchParams for link building. */
@@ -85,6 +88,7 @@ export function filterToQuery(f: Filter): URLSearchParams {
   if (f.status !== 'new') p.set('status', f.status)
   if (f.search) p.set('q', f.search)
   if (f.cursor) p.set('cursor', f.cursor)
+  if (f.seo_filter !== 'all') p.set('seo_filter', f.seo_filter)
   return p
 }
 
@@ -96,6 +100,8 @@ export function buildWhere(f: Filter): { sql: string; params: unknown[] } {
   const signal_types = Array.isArray(f.signal_types) ? f.signal_types : [...ALL_SIGNAL_TYPES]
   const tags = Array.isArray(f.tags) ? f.tags : []
 
+  // Exclude SEO/backlink activities from regular feed — they live on the Keywords page
+  clauses.push(`a.activity_type NOT IN ('keyword_rank_gain', 'keyword_rank_loss', 'backlink_acquired', 'backlink_lost', 'anchor_text_changed')`)
   if (signal_types.length > 0 && signal_types.length < ALL_SIGNAL_TYPES.length) {
     const placeholders = signal_types.map(() => '?').join(',')
     clauses.push(`s.type IN (${placeholders})`)

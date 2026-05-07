@@ -44,3 +44,15 @@ export function setSetting<T>(key: string, value: T): void {
 export function clearSetting(key: string): void {
   removeStmt().run(key)
 }
+
+let _listPrefix: ReturnType<typeof db.prepare> | undefined
+
+function listPrefixStmt() {
+  return (_listPrefix ??= db.prepare(
+    `SELECT key, value_json FROM settings WHERE key LIKE ?`,
+  ))
+}
+
+export function listSettingsByPrefix(prefix: string): Array<{ key: string; value: string }> {
+  return listPrefixStmt().all(`${prefix}%`) as Array<{ key: string; value: string }>
+}

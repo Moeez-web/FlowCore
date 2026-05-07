@@ -81,7 +81,7 @@ function setupModal(): Raw {
   </div>`
 }
 
-export function layout(opts: { title: string; body: Raw; activeNav?: 'board' | 'useful' | 'signals' }): Raw {
+export function layout(opts: { title: string; body: Raw; activeNav?: 'board' | 'useful' | 'signals' | 'keywords' }): Raw {
   const { title, body, activeNav = 'board' } = opts
 
   const navItem = (href: string, label: string, key: string, iconName: string) => {
@@ -235,21 +235,32 @@ export function layout(opts: { title: string; body: Raw; activeNav?: 'board' | '
         to { transform: rotate(360deg); }
       }
 
-      /* ── AI Summary slide-down/up ──
-         grid-template-rows transitions from 0fr → 1fr to animate height
-         smoothly. Wrapper child has overflow:hidden so content clips during
-         collapse. Default state is COLLAPSED — slides down only when the
-         user toggles data-summary-open on the wrapper. */
-      [data-summary-toggle] .summary-slide {
-        display: grid;
-        grid-template-rows: 0fr;
-        transition: grid-template-rows 280ms cubic-bezier(0.32, 0.72, 0, 1);
+      /* ── AI Summary popup ── */
+      .fc-summary-popup {
+        position: fixed;
+        inset: 0;
+        z-index: 80;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
       }
-      [data-summary-toggle][data-summary-open] .summary-slide {
-        grid-template-rows: 1fr;
+      .fc-summary-popup-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.45);
+        backdrop-filter: blur(2px);
+        animation: fadeIn 180ms ease-out;
       }
-      [data-summary-toggle]:not([data-summary-open]) [data-summary-chevron] {
-        transform: rotate(-90deg);
+      .fc-summary-popup-card {
+        position: relative;
+        max-width: 480px;
+        width: 100%;
+        background: #fff;
+        border-radius: 14px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+        padding: 1.25rem 1.5rem;
+        animation: articleIn 220ms cubic-bezier(0.32, 0.72, 0, 1);
       }
 
       /* ── Google ad iframe preview slide ──
@@ -756,6 +767,7 @@ export function layout(opts: { title: string; body: Raw; activeNav?: 'board' | '
           <div class="fc-tabset">
             ${navItem('/', 'Board', 'board', 'dashboard')}
             ${navItem('/useful', 'Useful', 'useful', 'bookmark')}
+            ${navItem('/keywords', 'Keywords', 'keywords', 'seo')}
             ${navItem('/signals', 'Signals', 'signals', 'broadcast')}
           </div>
         </nav>
@@ -803,7 +815,7 @@ export function layout(opts: { title: string; body: Raw; activeNav?: 'board' | '
         const checked = Array.from(form.querySelectorAll('input[name="tag"]:checked'))
         const trigger = form.querySelector('button[data-bs-toggle="dropdown"]')
         if (!trigger) return
-        const labelSpan = trigger.querySelector('span.truncate')
+        const labelSpan = trigger.querySelector('[data-tag-trigger-label]')
         if (!labelSpan) return
         let badge = trigger.querySelector('span.bg-blue-600')
         if (checked.length === 0) {
@@ -999,34 +1011,46 @@ export function layout(opts: { title: string; body: Raw; activeNav?: 'board' | '
         if (e.key === 'Escape') fcCloseArticleModals()
       })
 
-      // ── AI Summary slide toggle ──
-      // The wrapper has the data-summary-open attribute when expanded; click
-      // the header button to flip the attribute. CSS handles the animation.
+      // ── AI Summary popup ──
+      function fcCloseSummaryPopups() {
+        document.querySelectorAll('.fc-summary-popup').forEach(function(p) { p.remove() })
+      }
       document.addEventListener('click', function(e) {
-        const btn = e.target.closest && e.target.closest('[data-summary-toggle-btn]')
-        if (!btn) return
-        e.preventDefault()
-        e.stopPropagation()
-        const wrap = btn.closest('[data-summary-toggle]')
-        if (!wrap) return
-        if (wrap.hasAttribute('data-summary-open')) {
-          wrap.removeAttribute('data-summary-open')
-        } else {
-          wrap.setAttribute('data-summary-open', '')
+        var btn = e.target.closest && e.target.closest('[data-summary-toggle-btn]')
+        if (btn) {
+          e.preventDefault()
+          e.stopPropagation()
+          fcCloseSummaryPopups()
+          var text = btn.getAttribute('data-summary-text') || ''
+          var popup = document.createElement('div')
+          popup.className = 'fc-summary-popup'
+          popup.innerHTML = '<div class="fc-summary-popup-backdrop"></div>'
+            + '<div class="fc-summary-popup-card">'
+            + '<div class="flex items-center gap-2 text-[11px] text-blue-600 font-bold uppercase tracking-[0.18em] mb-3">'
+            + '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>'
+            + '<span>AI Summary</span>'
+            + '</div>'
+            + '<p class="text-[15px] text-slate-800 leading-7">' + text + '</p>'
+            + '</div>'
+          document.body.appendChild(popup)
+          return
         }
+        // Click backdrop → close
+        var backdrop = e.target.closest && e.target.closest('.fc-summary-popup-backdrop')
+        if (backdrop) {
+          fcCloseSummaryPopups()
+        }
+      })
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') fcCloseSummaryPopups()
       })
 
       // ── Inline video / post playback: click [data-play-video] inside a
-      // thumbnail wrapped in [data-video-thumb data-embed-url=...] → swap the
-      // thumb with an autoplaying iframe. stopPropagation so the activity
-      // card's outer click (which opens the detail drawer) doesn't fire.
-      //
-      // YouTube's embed is a clean 16:9 video — keep aspect-video, iframe fits.
-      // TikTok's embed iframe includes the video PLUS a header banner and
-      // caption, totalling roughly 9:16 + ~180px of chrome → use a fixed
-      // ~720px height so nothing is clipped.
-      // Instagram embeds vary by post type (portrait reels are taller than
-      // square photos with caption) → use ~720px which fits both reasonably.
+      // thumbnail wrapped in [data-video-thumb] → swap the thumb with either
+      // a native <video> element (when data-video-src is set — Instagram/TikTok
+      // direct media URLs) or an autoplaying iframe (YouTube embeds).
+      // stopPropagation so the activity card's outer click (which opens the
+      // detail drawer) doesn't fire.
       document.addEventListener('click', function(e) {
         const btn = e.target.closest && e.target.closest('[data-play-video]')
         if (!btn) return
@@ -1034,26 +1058,29 @@ export function layout(opts: { title: string; body: Raw; activeNav?: 'board' | '
         e.stopPropagation()
         const wrap = btn.closest('[data-video-thumb]')
         if (!wrap) return
+
+        // Direct video URL → native <video> element (no social chrome)
+        const videoSrc = wrap.getAttribute('data-video-src')
+        if (videoSrc) {
+          const video = document.createElement('video')
+          video.src = videoSrc
+          video.autoplay = true
+          video.controls = true
+          video.playsInline = true
+          video.muted = false
+          video.className = 'absolute inset-0 w-full h-full object-contain bg-black'
+          wrap.replaceChildren(video)
+          return
+        }
+
+        // Fallback: iframe embed (YouTube etc.)
         const url = wrap.getAttribute('data-embed-url')
         if (!url) return
-        const isInstagram = url.indexOf('instagram.com') !== -1
-        const isTikTok = url.indexOf('tiktok.com') !== -1
-        if (isInstagram || isTikTok) {
-          // Drop aspect-* and max-w constraints so the iframe gets a clean
-          // full-width fixed-height container that matches the embed's
-          // intrinsic shape.
-          wrap.className = wrap.className.replace(/aspect-\S+/g, '').replace(/max-w-\[\S+\]/g, '').replace(/mx-auto/g, '').trim()
-          wrap.style.aspectRatio = ''
-          wrap.style.maxWidth = ''
-          wrap.style.height = isTikTok ? '720px' : '720px'
-          wrap.style.width = '100%'
-        }
         const iframe = document.createElement('iframe')
         iframe.src = url
         iframe.setAttribute('frameborder', '0')
         iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen')
         iframe.setAttribute('allowfullscreen', '')
-        iframe.scrolling = isInstagram ? 'no' : 'auto'
         iframe.className = 'absolute inset-0 w-full h-full bg-black'
         wrap.replaceChildren(iframe)
       })
@@ -1186,11 +1213,21 @@ export function layout(opts: { title: string; body: Raw; activeNav?: 'board' | '
         else if (verb === 'delete' && new RegExp('^/signals/[0-9]+$').test(path)) fcToast('Signal deleted', 'success')
       })
 
-      // Remove initial-load animation class after first htmx swap so
-      // subsequent loads don't re-trigger cardIn animations.
+      // Remove initial-load animation class after first htmx swap.
       document.addEventListener('htmx:afterSwap', function() {
         document.body.classList.remove('fc-initial-load');
       }, { once: true });
+
+      // Pause all playing videos and iframes before HTMX swaps anything
+      // so audio doesn't leak from removed cards.
+      document.addEventListener('htmx:beforeSwap', function() {
+        document.querySelectorAll('video').forEach(function(v) {
+          if (!v.paused) { v.pause(); v.removeAttribute('src'); v.load(); }
+        });
+        document.querySelectorAll('iframe').forEach(function(f) {
+          if (f.src && (f.src.includes('youtube') || f.src.includes('tiktok'))) f.src = f.src;
+        });
+      });
 
       // ── Update status pill counts after triage without server round-trip ──
       // Count updates are handled server-side via htmx out-of-band swaps (hx-swap-oob).

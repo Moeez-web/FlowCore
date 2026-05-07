@@ -51,9 +51,29 @@ const TYPE_ALLOCATION: Record<string, number> = {
   instagram_account: 14,
   tiktok_account:    20,
   youtube_channel:   12,
-  seo_keyword:       18,
-  backlink_profile:  10,
 }
+
+// SEO and backlink activities are generated from website signals (not standalone).
+const SEO_ACTIVITIES_PER_SITE = 2
+const BACKLINK_ACTIVITIES_PER_SITE = 1
+
+const SHARED_SEO_KEYWORDS = [
+  'water well drilling fort worth',
+  'well pump repair saginaw tx',
+  'water filtration system dfw',
+  'plumber fort worth tx',
+  'tankless water heater installation dfw',
+  'slab leak detection fort worth',
+  'sewer line repair southlake',
+  'emergency plumber denton',
+  'water softener installation keller',
+  'gas line repair fort worth',
+  'reverse osmosis system dfw',
+  'whole home repipe fort worth',
+  'drain cleaning saginaw',
+  'water heater replacement weatherford',
+  'well drilling cost north texas',
+]
 
 const STATUS_WEIGHTS: Array<{ status: Status; weight: number }> = [
   { status: 'new',    weight: 80 },
@@ -332,32 +352,32 @@ function genYouTubeChannel(rng: () => number, sig: SeedSignal, sigIdx: number, n
   }
 }
 
-function genSeoRank(rng: () => number, sig: SeedSignal, sigIdx: number, now: number): SeedActivity {
+function genSeoRank(rng: () => number, sig: SeedSignal, sigIdx: number, now: number, keyword: string): SeedActivity {
   const prevPos = 3 + Math.floor(rng() * 25)
   const delta = (rng() < 0.6 ? 1 : -1) * (3 + Math.floor(rng() * 8))
   const newPos = Math.max(1, prevPos - delta)
   const week = Math.floor((now - new Date(weightedRecentISO(rng, now)).getTime()) / (7 * 24 * 3600 * 1000))
   const title = delta > 0
-    ? `Gained ${delta} positions: "${sig.target}" (${prevPos}→${newPos})`
-    : `Lost ${Math.abs(delta)} positions: "${sig.target}" (${prevPos}→${newPos})`
+    ? `Gained ${delta} positions: "${keyword}" (${prevPos}→${newPos})`
+    : `Lost ${Math.abs(delta)} positions: "${keyword}" (${prevPos}→${newPos})`
 
   return {
     signal_index: sigIdx,
     activity_type: delta > 0 ? 'keyword_rank_gain' : 'keyword_rank_loss',
     title,
     preview: `Tracked keyword shift on Google`,
-    source_url: `https://www.google.com/search?q=${encodeURIComponent(sig.target)}`,
+    source_url: `https://www.google.com/search?q=${encodeURIComponent(keyword)}`,
     thumbnail_url: null,
     detected_at: weightedRecentISO(rng, now),
     raw_payload: {
-      keyword: sig.target,
+      keyword,
       prev_position: prevPos,
       new_position: newPos,
       delta,
       week_number: week,
     },
     status: pickWeighted(rng, STATUS_WEIGHTS),
-    dedup_key: `${sig.target}|w${week}|${shortHash(rng)}`,
+    dedup_key: `${keyword}|w${week}|${shortHash(rng)}`,
     summary_text: null,
     summary_model: null,
   }
@@ -402,8 +422,6 @@ const GENERATORS: Record<string, (rng: () => number, s: SeedSignal, i: number, n
   instagram_account: genInstagramPost,
   tiktok_account:    genTikTokAccount,
   youtube_channel:   genYouTubeChannel,
-  seo_keyword:       genSeoRank,
-  backlink_profile:  genBacklink,
 }
 
 // ────────────────────── Real anchors (verified content) ────────────────────
@@ -440,8 +458,6 @@ const ACTIVITY_TYPE_VARIANTS: Record<string, string[]> = {
   instagram_account: ['new_post', 'new_post', 'new_post', 'post_edited', 'post_deleted'],
   tiktok_account:    ['new_video', 'new_video', 'caption_edited', 'comment_burst', 'video_removed'],
   youtube_channel:   ['new_video', 'new_video', 'video_unlisted', 'view_milestone'],
-  seo_keyword:       ['keyword_rank_gain', 'keyword_rank_loss'],
-  backlink_profile:  ['backlink_acquired', 'backlink_acquired', 'backlink_lost', 'anchor_text_changed'],
 }
 function pickVariant(type: string, rng: () => number): string {
   const opts = ACTIVITY_TYPE_VARIANTS[type]
@@ -1008,13 +1024,27 @@ export function generateActivities(signals: SeedSignal[]): SeedActivity[] {
     for (let n = 0; n < target; n++) {
       const sigIdx = indices[n % indices.length]!
       const row = gen(rng, signals[sigIdx]!, sigIdx, syntheticNow)
-      // Override with a randomised event-type variant for visual diversity.
-      // Skip seo_keyword — its variant (rank gain vs loss) is already decided
-      // by genSeoRank based on the delta sign, so we don't re-randomise.
-      if (type !== 'seo_keyword') {
-        row.activity_type = pickVariant(type, rng)
-      }
+      row.activity_type = pickVariant(type, rng)
       out.push(row)
+    }
+  }
+
+  // 3. SEO rank activities — generated from website signals with a shared keyword
+  //    pool. Each website signal inherits its competitor's tags/vertical/tier.
+  const websiteIndices = byType.get('website') ?? []
+  for (const sigIdx of websiteIndices) {
+    const sig = signals[sigIdx]!
+    for (let n = 0; n < SEO_ACTIVITIES_PER_SITE; n++) {
+      const keyword = SHARED_SEO_KEYWORDS[Math.floor(rng() * SHARED_SEO_KEYWORDS.length)]!
+      out.push(genSeoRank(rng, sig, sigIdx, syntheticNow, keyword))
+    }
+  }
+
+  // 4. Backlink activities — generated from website signals.
+  for (const sigIdx of websiteIndices) {
+    const sig = signals[sigIdx]!
+    for (let n = 0; n < BACKLINK_ACTIVITIES_PER_SITE; n++) {
+      out.push(genBacklink(rng, sig, sigIdx, syntheticNow))
     }
   }
 

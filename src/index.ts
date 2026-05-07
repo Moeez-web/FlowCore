@@ -7,9 +7,14 @@ import { dashboardRoutes } from './routes/dashboard.ts'
 import { activityRoutes } from './routes/activity.ts'
 import { signalRoutes } from './routes/signals.ts'
 import { adminRoutes } from './routes/admin.ts'
+import { keywordsRoutes } from './routes/keywords.ts'
 import { authRoutes } from './routes/auth.ts'
+import { proxyRoutes } from './routes/proxy.ts'
 import { authMiddleware } from './middleware/auth.ts'
 import { startRetentionJob } from './services/retention.ts'
+import { startScheduler } from './pollers/scheduler.ts'
+import { seedKeywords } from './db/queries.ts'
+import { DEFAULT_KEYWORDS } from './pollers/serper.ts'
 
 migrate()
 
@@ -39,11 +44,20 @@ if (seedResult.signals > 0) {
   console.log(`seeded ${seedResult.signals} signals, ${seedResult.activities} activities`)
 }
 
+const kwSeeded = seedKeywords(DEFAULT_KEYWORDS)
+if (kwSeeded > 0) {
+  console.log(`seeded ${kwSeeded} SEO keywords`)
+}
+
 startRetentionJob()
+startScheduler()
 
 const app = new Hono()
 
 app.get('/healthz', (c) => c.text('ok'))
+
+// Proxy route is public — the video player needs unauthenticated access.
+app.route('/', proxyRoutes)
 
 // Auth routes (login, logout) are public — middleware allow-lists them.
 app.route('/', authRoutes)
@@ -52,6 +66,7 @@ app.route('/', authRoutes)
 app.use('*', authMiddleware)
 app.route('/', dashboardRoutes)
 app.route('/', activityRoutes)
+app.route('/', keywordsRoutes)
 app.route('/', signalRoutes)
 app.route('/', adminRoutes)
 // /saved removed — use the Board's status=useful filter instead.

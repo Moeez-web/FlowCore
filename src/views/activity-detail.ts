@@ -24,40 +24,29 @@ const TYPE_ICON: Record<string, string> = {
   backlink_profile:  'seo',
 }
 
+const SEO_ACTIVITY_TYPES = new Set(['keyword_rank_gain', 'keyword_rank_loss'])
+const BACKLINK_ACTIVITY_TYPES = new Set(['backlink_acquired', 'backlink_lost', 'anchor_text_changed'])
+
+function visualType(a: ActivityRow): string {
+  if (SEO_ACTIVITY_TYPES.has(a.activity_type)) return 'seo_keyword'
+  if (BACKLINK_ACTIVITY_TYPES.has(a.activity_type)) return 'backlink_profile'
+  return a.signal_type
+}
+
 // AI summary block.
 //   Pre-fetch state: compact "AI Summarize" button → POSTs to /summary.
-//   Generated state: a "View AI summary" button + a hidden popup modal
-//     containing the summary text. Click → modal pops up. After htmx
-//     finishes generating a fresh summary, the new section auto-opens
-//     the modal once via [data-modal-auto-open].
+//   Generated state: a sparkle icon that shows a tooltip on click.
 export function summarySection(a: ActivityRow, opts: { error?: string; autoOpen?: boolean } = {}): Raw {
   const id = String(a.id)
   if (a.summary_text && a.summary_text.length > 0) {
-    const modalId = `summary-modal-${id}`
-    const autoOpenAttr = opts.autoOpen ? raw(`data-modal-auto-open="${modalId}"`) : raw('')
-    return html`<div id="summary-section-${id}" class="inline-flex items-center" hx-on:click="event.stopPropagation()" ${autoOpenAttr}>
+    return html`<div id="summary-section-${id}" class="inline-flex items-center">
       <button type="button"
-              data-modal-open="${modalId}"
-              title="Show the AI summary"
-              class="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 border-2 border-blue-300 bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-700 rounded-lg hover:from-blue-500 hover:to-indigo-600 hover:text-white hover:border-blue-600 active:scale-95 transition-all">
-        ${icon('eye')} View AI summary
+              data-summary-toggle-btn
+              data-summary-text="${a.summary_text.replace(/"/g, '&quot;').replace(/</g, '&lt;')}"
+              class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 border border-slate-200 text-slate-500 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 transition-colors"
+              aria-label="Show summary">
+        ${icon('info')}
       </button>
-      <div id="${modalId}" class="fc-article-modal" hidden hx-on:click="event.stopPropagation()">
-        <div class="fc-article-backdrop" data-article-close></div>
-        <div class="fc-article-card fc-summary-card" role="dialog" aria-modal="true" aria-labelledby="summary-title-${id}">
-          <button type="button" data-article-close class="fc-article-close" aria-label="Close summary">×</button>
-          <div class="fc-article-scroll">
-            <div class="px-6 sm:px-8 pt-7 sm:pt-9 pb-6">
-              <div class="flex items-center gap-2 text-[11px] text-blue-600 font-bold uppercase tracking-[0.18em] mb-3">
-                ${icon('sparkle')} <span>AI Summary</span>
-              </div>
-              <h2 id="summary-title-${id}" class="text-lg sm:text-xl font-bold text-slate-900 leading-snug mb-4" style="font-family: 'Kumbh Sans', system-ui, sans-serif;">${a.title}</h2>
-              <p class="text-[15px] text-slate-800 leading-7 whitespace-pre-line">${a.summary_text}</p>
-              <p class="text-[10px] text-blue-700 font-semibold mt-5 uppercase tracking-wide">${a.summary_model ?? 'OpenRouter'}</p>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>`
   }
 
@@ -72,14 +61,14 @@ export function summarySection(a: ActivityRow, opts: { error?: string; autoOpen?
             hx-target="#summary-section-${id}"
             hx-swap="outerHTML"
             hx-disabled-elt="this"
-            title="Generate a 2–3 sentence FlowCore-specific briefing via OpenRouter"
-            class="ai-summarize-btn inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 border-2 border-blue-300 bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-700 rounded-lg hover:from-blue-500 hover:to-indigo-600 hover:text-white hover:border-blue-600 active:scale-95 transition-all disabled:cursor-wait disabled:opacity-90 disabled:hover:from-blue-50 disabled:hover:to-indigo-50 disabled:hover:text-blue-700 disabled:hover:border-blue-300">
+            title="Generate a one-line content description via AI"
+            class="ai-summarize-btn inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 border border-slate-200 bg-slate-50 text-slate-500 rounded-md hover:bg-slate-100 hover:text-slate-700 transition-colors disabled:cursor-wait disabled:opacity-90">
       <span class="ai-summarize-default inline-flex items-center gap-1.5">
-        ${icon('sparkle')} AI Summarize
+        ${icon('sparkle')} Summarize
       </span>
       <span class="ai-summarize-loading inline-flex items-center gap-1.5">
         <span class="ai-spinner"></span>
-        Asking AI…
+        Generating…
       </span>
     </button>
     ${errorBlock}
@@ -151,8 +140,9 @@ function savedActions(a: ActivityRow): Raw {
 }
 
 export function activityDetail(a: ActivityRow): Raw {
-  const tint = TYPE_TINT[a.signal_type] ?? 'bg-slate-100 text-slate-700'
-  const iconKey = TYPE_ICON[a.signal_type] ?? 'website'
+  const vt = visualType(a)
+  const tint = TYPE_TINT[vt] ?? 'bg-slate-100 text-slate-700'
+  const iconKey = TYPE_ICON[vt] ?? 'website'
   const typeLabel = SIGNAL_TYPE_LABELS[a.signal_type] ?? a.signal_type
   const detected = new Date(a.detected_at).toLocaleString('en-US', {
     weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',

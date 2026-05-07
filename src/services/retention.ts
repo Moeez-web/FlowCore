@@ -4,7 +4,8 @@ const DEFAULT_DAYS = Number(process.env.RETENTION_DAYS ?? 30)
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000
 
 export function startRetentionJob(): void {
-  // Run once at boot, then every 6 hours.
+  // Only run on the interval — skip at boot so poller backfill data isn't
+  // immediately pruned before the user has a chance to triage it.
   const run = () => {
     try {
       const deleted = pruneOldActivities(DEFAULT_DAYS)
@@ -16,6 +17,9 @@ export function startRetentionJob(): void {
     }
   }
 
-  run()
-  setInterval(run, SIX_HOURS_MS).unref()
+  // First run after 6 hours, then every 6 hours
+  setTimeout(() => {
+    run()
+    setInterval(run, SIX_HOURS_MS).unref()
+  }, SIX_HOURS_MS)
 }

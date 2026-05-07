@@ -98,30 +98,9 @@ function expand(b: CompanyBatch): SeedSignal[] {
   if (b.tiktok)        sig.push({ type: 'tiktok_account',    target: b.tiktok,        ...base })
   if (b.youtube)       sig.push({ type: 'youtube_channel',   target: b.youtube,       ...base })
   if (b.google_ads_id) sig.push({ type: 'google_ads',        target: b.google_ads_id, ...base })
-  if (b.domain)        sig.push({ type: 'backlink_profile',  target: b.domain,        ...base })
   return sig
 }
 
-// SEO keyword signals — keywords stay keyword-shaped (the unit IS the search term).
-const seoKeywords: SeedSignal[] = [
-  'water well drilling fort worth',
-  'well pump repair saginaw tx',
-  'water filtration system dfw',
-  'plumber fort worth tx',
-  'tankless water heater installation dfw',
-  'slab leak detection fort worth',
-  'sewer line repair southlake',
-  'emergency plumber denton',
-  'water softener installation keller',
-  'gas line repair fort worth',
-  'reverse osmosis system dfw',
-  'whole home repipe fort worth',
-  'drain cleaning saginaw',
-  'water heater replacement weatherford',
-  'well drilling cost north texas',
-].map<SeedSignal>((kw) => ({ type: 'seo_keyword', target: kw }))
-
 export const seedSignals: SeedSignal[] = [
   ...realCompanies.flatMap(expand),
-  ...seoKeywords,
 ]

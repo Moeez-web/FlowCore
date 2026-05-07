@@ -26,7 +26,6 @@ export function migrate(): void {
   const isV1 =
     tableExists('competitors') ||
     tableExists('competitor_channels') ||
-    tableExists('keywords') ||
     (tableExists('activities') && columnExists('activities', 'competitor_id'))
 
   const isV2 =

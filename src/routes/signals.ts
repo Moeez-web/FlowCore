@@ -282,4 +282,3 @@ signalRoutes.get('/signals/search', (c) => {
 })
 
 signalRoutes.get('/competitors', (c) => c.redirect('/signals', 301))
-signalRoutes.get('/keywords',    (c) => c.redirect('/signals', 301))

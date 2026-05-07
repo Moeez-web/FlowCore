@@ -65,7 +65,17 @@ activityRoutes.post('/activities/:id/triage', async (c) => {
   // Build out-of-band count update using the user's saved filter context
   const saved = getSetting<Filter>('last_filter')
   const filter: Filter = { ...DEFAULT_FILTER, ...(saved ?? {}), page: 1, cursor: undefined }
-  const counts = statusCountOob(filter)
+
+  // Status pill OOB spans only exist on the Board page (not /useful).
+  // Skip the 3 extra countActivities queries when coming from Useful.
+  const referer = c.req.header('Referer') ?? ''
+  const fromUseful = referer.includes('/useful')
+  const counts = fromUseful
+    ? (() => {
+        const total = countActivities(filter)
+        return `<p id="feed-item-count" hx-swap-oob="true" class="text-xs text-slate-500 font-medium">${total} ${total === 1 ? 'item' : 'items'}</p>`
+      })()
+    : statusCountOob(filter)
 
   if (action === 'skip') {
     // Row is gone from DB. Return just the OOB count update — the card element

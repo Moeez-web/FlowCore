@@ -1,8 +1,5 @@
 node_modules
-data/*.db
-data/*.db-journal
-data/*.db-wal
-data/*.db-shm
+data
 .env
 .env.local
 .idea
@@ -14,4 +11,3 @@ project-doc
 README.md
 .gitignore
 .railwayignore
-railway.toml

@@ -4,11 +4,16 @@ import type { ActivityRow } from '../db/queries.ts'
 const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions'
 const TIMEOUT_MS = 20_000
 
-const SYSTEM_PROMPT = `You write brief marketing-intelligence briefings for the CEO of FlowCore Water — a North Texas water-well drilling and plumbing company.
+const SYSTEM_PROMPT = `You describe what a piece of content IS in one clear sentence. You do NOT give marketing advice, strategy, or recommendations. Just describe the content factually so someone scanning a feed knows what it is without opening it.
 
-Each briefing is 2–3 sentences. No headings, no preamble, no fluff. Be specific and actionable.
-
-Explain why a competitor's marketing move matters and what FlowCore could copy or counter. Reference concrete details (the keyword, the headline, the city, the metric). Do not hedge with generic advice.`
+Rules:
+- Exactly ONE sentence. No exceptions.
+- Be specific: mention names, numbers, topics, cities when available.
+- Describe what the content shows or says — not what it "means for the business."
+- For removed/deleted content, state what was removed.
+- For ads, describe the headline, copy angle, and CTA.
+- For videos/posts, describe the topic and notable engagement if available.
+- For website pages, describe the page topic, service, or location it targets.`
 
 export class OpenRouterError extends Error {
   constructor(message: string, public override readonly cause?: unknown) {
@@ -48,13 +53,6 @@ function buildUserPrompt(a: ActivityRow): string {
       if (payload['description']) lines.push(`Description: ${payload['description']}`)
       if (payload['change_type']) lines.push(`Change type: ${payload['change_type']}`)
       break
-    case 'website':
-      if (payload['url']) lines.push(`URL: ${payload['url']}`)
-      if (payload['target_service']) lines.push(`Target service: ${payload['target_service']}`)
-      if (payload['target_city']) lines.push(`Target city: ${payload['target_city']}`)
-      if (payload['first_paragraph']) lines.push(`First paragraph: ${payload['first_paragraph']}`)
-      if (payload['word_count']) lines.push(`Word count: ${payload['word_count']}`)
-      break
     case 'instagram_account':
       if (payload['caption']) lines.push(`Caption: ${payload['caption']}`)
       if (typeof payload['like_count'] === 'number') lines.push(`Likes: ${payload['like_count']}`)
@@ -71,16 +69,24 @@ function buildUserPrompt(a: ActivityRow): string {
       if (typeof payload['view_count'] === 'number') lines.push(`Views: ${payload['view_count']}`)
       if (typeof payload['duration_sec'] === 'number') lines.push(`Duration: ${payload['duration_sec']}s`)
       break
-    case 'seo_keyword':
-      if (payload['keyword']) lines.push(`Keyword: ${payload['keyword']}`)
-      if (typeof payload['prev_position'] === 'number' && typeof payload['new_position'] === 'number') {
-        lines.push(`Position change: ${payload['prev_position']} → ${payload['new_position']} (delta ${payload['delta']})`)
+    case 'website':
+      // Website signals can also produce SEO rank and backlink activities
+      if (payload['keyword']) {
+        lines.push(`Keyword: ${payload['keyword']}`)
+        if (typeof payload['prev_position'] === 'number' && typeof payload['new_position'] === 'number') {
+          lines.push(`Position change: ${payload['prev_position']} → ${payload['new_position']} (delta ${payload['delta']})`)
+        }
+      } else if (payload['source_domain']) {
+        lines.push(`Backlink from: ${payload['source_domain']} (DA ${payload['source_da']})`)
+        if (payload['anchor_text']) lines.push(`Anchor text: "${payload['anchor_text']}"`)
+        if (payload['target_url']) lines.push(`Target URL: ${payload['target_url']}`)
+      } else {
+        if (payload['url']) lines.push(`URL: ${payload['url']}`)
+        if (payload['target_service']) lines.push(`Target service: ${payload['target_service']}`)
+        if (payload['target_city']) lines.push(`Target city: ${payload['target_city']}`)
+        if (payload['first_paragraph']) lines.push(`First paragraph: ${payload['first_paragraph']}`)
+        if (payload['word_count']) lines.push(`Word count: ${payload['word_count']}`)
       }
-      break
-    case 'backlink_profile':
-      if (payload['source_domain']) lines.push(`Backlink from: ${payload['source_domain']} (DA ${payload['source_da']})`)
-      if (payload['anchor_text']) lines.push(`Anchor text: "${payload['anchor_text']}"`)
-      if (payload['target_url']) lines.push(`Target URL: ${payload['target_url']}`)
       break
   }
 
@@ -107,7 +113,7 @@ export async function generateSummary(a: ActivityRow): Promise<string> {
       },
       body: JSON.stringify({
         model: config.openRouter.sotaModel,
-        max_tokens: 220,
+        max_tokens: 80,
         temperature: 0.4,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },

@@ -1,5 +1,36 @@
 import { db } from './client.ts'
 import { type Filter, buildWhere } from '../lib/filters.ts'
+import { listSettingsByPrefix } from './settings.ts'
+import { config } from '../config.ts'
+
+// Lazy import to avoid circular dependency (summary.ts → queries.ts)
+let _generateSummary: typeof import('../services/openrouter.ts').generateSummary | null = null
+
+function queueSummaryForNewActivity(p: PollerActivityParams): void {
+  // Look up the row we just inserted by dedup_key
+  const row = db.prepare(
+    `SELECT id FROM activities WHERE signal_id = ? AND dedup_key = ?`,
+  ).get(p.signal_id, p.dedup_key) as { id: number } | undefined
+  if (!row) return
+
+  const activity = getActivityById(row.id)
+  if (!activity) return
+
+  // Fire-and-forget async — errors are logged, not thrown
+  ;(async () => {
+    try {
+      if (!_generateSummary) {
+        _generateSummary = (await import('../services/openrouter.ts')).generateSummary
+      }
+      const text = await _generateSummary(activity)
+      db.prepare(
+        `UPDATE activities SET summary_text = ?, summary_model = ?, summary_generated_at = ? WHERE id = ?`,
+      ).run(text, config.openRouter.sotaModel, new Date().toISOString(), row.id)
+    } catch (err) {
+      console.error(`[auto-summary] activity ${row.id}:`, err instanceof Error ? err.message : err)
+    }
+  })()
+}
 
 // ────────────────────────────────────────────────────────────────────
 // Signal types
@@ -11,8 +42,6 @@ export const SIGNAL_TYPES = [
   'instagram_account',
   'tiktok_account',
   'youtube_channel',
-  'seo_keyword',
-  'backlink_profile',
 ] as const
 export type SignalType = typeof SIGNAL_TYPES[number]
 
@@ -23,8 +52,6 @@ export const SIGNAL_TYPE_LABELS: Record<SignalType, string> = {
   instagram_account: 'Instagram',
   tiktok_account:    'TikTok',
   youtube_channel:   'YouTube',
-  seo_keyword:       'SEO keyword',
-  backlink_profile:  'Backlink profile',
 }
 
 export interface SignalRow {
@@ -509,8 +536,252 @@ export function setActivitySummary(id: number, text: string, model: string): Act
 }
 
 // ────────────────────────────────────────────────────────────────────
+// Poller insertion — dedup-safe activity upsert used by all pollers
+// ────────────────────────────────────────────────────────────────────
+export interface PollerActivityParams {
+  signal_id: number
+  activity_type: string
+  title: string
+  preview: string | null
+  source_url: string | null
+  thumbnail_url: string | null
+  detected_at: string
+  raw_payload_json: string
+  dedup_key: string
+}
+
+export function insertActivityFromPoller(p: PollerActivityParams): boolean {
+  const r = db.prepare(`
+    INSERT OR IGNORE INTO activities (
+      signal_id, activity_type, title, preview,
+      source_url, thumbnail_url, detected_at, raw_payload_json,
+      status, dedup_key
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new', ?)
+  `).run(
+    p.signal_id, p.activity_type, p.title, p.preview,
+    p.source_url, p.thumbnail_url, p.detected_at, p.raw_payload_json,
+    p.dedup_key,
+  )
+  const inserted = r.changes > 0
+  if (inserted) {
+    // Fire-and-forget: generate a one-line summary in the background
+    queueSummaryForNewActivity(p)
+  }
+  return inserted
+}
+
+// ────────────────────────────────────────────────────────────────────
 // Retention — auto-delete activities older than N days, keep 'useful'
 // ────────────────────────────────────────────────────────────────────
+
+// ────────────────────────────────────────────────────────────────────
+// SEO keyword summary — aggregated rank changes grouped by keyword
+// ────────────────────────────────────────────────────────────────────
+export interface SeoKeywordEntry {
+  keyword: string
+  competitor: string
+  signalTarget: string
+  prevPosition: number
+  newPosition: number
+  delta: number
+  detectedAt: string
+}
+
+export function getSeoKeywordSummary(days: number): Map<string, SeoKeywordEntry[]> {
+  const tracked = listKeywords()
+  const trackedSet = new Set(tracked.map((k) => k.toLowerCase()))
+
+  const rows = db.prepare(`
+    SELECT
+      a.activity_type, a.raw_payload_json, a.detected_at,
+      s.target AS signal_target,
+      COALESCE(
+        (SELECT t.name FROM signal_tags st JOIN tags t ON t.id = st.tag_id WHERE st.signal_id = s.id ORDER BY t.name LIMIT 1),
+        s.target
+      ) AS competitor
+    FROM activities a
+    JOIN signals s ON s.id = a.signal_id
+    WHERE a.activity_type IN ('keyword_rank_gain', 'keyword_rank_loss')
+      AND a.detected_at >= datetime('now', ?)
+    ORDER BY a.detected_at DESC
+  `).all(`-${days} days`) as Array<{
+    activity_type: string
+    raw_payload_json: string
+    detected_at: string
+    signal_target: string
+    competitor: string
+  }>
+
+  const result = new Map<string, SeoKeywordEntry[]>()
+  for (const r of rows) {
+    let payload: Record<string, unknown> = {}
+    try { payload = JSON.parse(r.raw_payload_json) } catch { continue }
+    const keyword = String(payload['keyword'] ?? '')
+    if (!keyword) continue
+    if (trackedSet.size > 0 && !trackedSet.has(keyword.toLowerCase())) continue
+
+    const entry: SeoKeywordEntry = {
+      keyword,
+      competitor: r.competitor,
+      signalTarget: r.signal_target,
+      prevPosition: Number(payload['prev_position'] ?? 0),
+      newPosition: Number(payload['new_position'] ?? 0),
+      delta: Number(payload['delta'] ?? 0),
+      detectedAt: r.detected_at,
+    }
+
+    if (!result.has(keyword)) result.set(keyword, [])
+    result.get(keyword)!.push(entry)
+  }
+
+  return result
+}
+
+// ────────────────────────────────────────────────────────────────────
+// SEO baseline — stored SERP positions from serper poller (settings)
+// ────────────────────────────────────────────────────────────────────
+export interface SeoBaselineEntry {
+  keyword: string
+  competitor: string
+  signalTarget: string
+  position: number
+}
+
+export function getSeoBaselinePositions(): Map<string, SeoBaselineEntry[]> {
+  const tracked = listKeywords()
+  const trackedSet = new Set(tracked.map((k) => k.toLowerCase()))
+  const rows = listSettingsByPrefix('serper_positions:')
+
+  // Build domain → { competitor } lookup from website signals
+  const domainLookup = new Map<string, { competitor: string; target: string }>()
+  const signals = db.prepare(`
+    SELECT s.id, s.target,
+      COALESCE(
+        (SELECT t.name FROM signal_tags st JOIN tags t ON t.id = st.tag_id WHERE st.signal_id = s.id ORDER BY t.name LIMIT 1),
+        s.target
+      ) AS competitor
+    FROM signals s
+    WHERE s.type = 'website' AND s.is_active = 1
+  `).all() as Array<{ id: number; target: string; competitor: string }>
+
+  for (const s of signals) {
+    domainLookup.set(s.target.replace(/^www\./, ''), { competitor: s.competitor, target: s.target })
+  }
+
+  const result = new Map<string, SeoBaselineEntry[]>()
+  for (const row of rows) {
+    const keyword = row.key.replace('serper_positions:', '')
+    if (trackedSet.size > 0 && !trackedSet.has(keyword.toLowerCase())) continue
+    let positions: Record<string, number> = {}
+    try { positions = JSON.parse(row.value) as Record<string, number> } catch { continue }
+
+    for (const [domain, position] of Object.entries(positions)) {
+      const info = domainLookup.get(domain)
+      if (!info) continue
+
+      if (!result.has(keyword)) result.set(keyword, [])
+      result.get(keyword)!.push({
+        keyword,
+        competitor: info.competitor,
+        signalTarget: info.target,
+        position,
+      })
+    }
+  }
+
+  // Sort each keyword's entries by position ascending
+  for (const entries of result.values()) {
+    entries.sort((a, b) => a.position - b.position)
+  }
+
+  return result
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Backlink summary — recent backlink changes grouped by competitor
+// ────────────────────────────────────────────────────────────────────
+export interface BacklinkEntry {
+  competitor: string
+  signalTarget: string
+  sourceDomain: string
+  sourcePage: string
+  sourceDa: number
+  anchorText: string
+  targetUrl: string
+  activityType: string
+  detectedAt: string
+}
+
+export function getBacklinkSummary(days: number): BacklinkEntry[] {
+  const rows = db.prepare(`
+    SELECT
+      a.activity_type, a.raw_payload_json, a.detected_at,
+      s.target AS signal_target,
+      COALESCE(
+        (SELECT t.name FROM signal_tags st JOIN tags t ON t.id = st.tag_id WHERE st.signal_id = s.id ORDER BY t.name LIMIT 1),
+        s.target
+      ) AS competitor
+    FROM activities a
+    JOIN signals s ON s.id = a.signal_id
+    WHERE a.activity_type IN ('backlink_acquired', 'backlink_lost', 'anchor_text_changed')
+      AND a.detected_at >= datetime('now', ?)
+    ORDER BY a.detected_at DESC
+  `).all(`-${days} days`) as Array<{
+    activity_type: string
+    raw_payload_json: string
+    detected_at: string
+    signal_target: string
+    competitor: string
+  }>
+
+  const result: BacklinkEntry[] = []
+  for (const r of rows) {
+    let payload: Record<string, unknown> = {}
+    try { payload = JSON.parse(r.raw_payload_json) } catch { continue }
+
+    result.push({
+      competitor: r.competitor,
+      signalTarget: r.signal_target,
+      sourceDomain: String(payload['source_domain'] ?? ''),
+      sourcePage: String(payload['source_page'] ?? ''),
+      sourceDa: Number(payload['source_da'] ?? 0),
+      anchorText: String(payload['anchor_text'] ?? ''),
+      targetUrl: String(payload['target_url'] ?? ''),
+      activityType: r.activity_type,
+      detectedAt: r.detected_at,
+    })
+  }
+
+  return result
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Keywords — tracked SEO keywords stored in DB
+// ────────────────────────────────────────────────────────────────────
+
+export function listKeywords(): string[] {
+  return (db.prepare(`SELECT phrase FROM keywords ORDER BY id`).all() as Array<{ phrase: string }>).map((r) => r.phrase)
+}
+
+export function addKeyword(phrase: string): boolean {
+  const r = db.prepare(`INSERT OR IGNORE INTO keywords (phrase) VALUES (?)`).run(phrase.trim().slice(0, 120))
+  return r.changes > 0
+}
+
+export function removeKeyword(phrase: string): boolean {
+  const r = db.prepare(`DELETE FROM keywords WHERE phrase = ?`).run(phrase)
+  return r.changes > 0
+}
+
+export function seedKeywords(phrases: string[]): number {
+  const stmt = db.prepare(`INSERT OR IGNORE INTO keywords (phrase) VALUES (?)`)
+  let count = 0
+  for (const p of phrases) {
+    if (stmt.run(p).changes > 0) count++
+  }
+  return count
+}
+
 export function pruneOldActivities(retentionDays: number): number {
   const days = Math.max(1, Math.min(60, Math.round(retentionDays)))
   const r = db

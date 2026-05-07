@@ -39,6 +39,7 @@ export const UI_ICONS: Record<string, string> = {
   pause: `${SVG_OPEN} class="w-3 h-3"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>`,
   play: `${SVG_OPEN} class="w-3 h-3"><polygon points="6 4 20 12 6 20 6 4"/></svg>`,
   trash: `${SVG_OPEN} class="w-3 h-3"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`,
+  info: `${SVG_OPEN} class="w-4 h-4"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`,
 }
 
 export function icon(name: string): Raw {

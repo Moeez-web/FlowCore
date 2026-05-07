@@ -5,7 +5,7 @@ import { config } from '../config.ts'
 
 // Public paths skip auth entirely. Everything else requires a valid JWT
 // cookie; otherwise we redirect (or return HX-Redirect for htmx requests).
-const PUBLIC_PATHS = new Set(['/login', '/logout', '/healthz'])
+const PUBLIC_PATHS = new Set(['/login', '/logout', '/healthz', '/proxy/media'])
 
 function isPublic(path: string): boolean {
   if (PUBLIC_PATHS.has(path)) return true
