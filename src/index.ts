@@ -8,6 +8,7 @@ import { activityRoutes } from './routes/activity.ts'
 import { signalRoutes } from './routes/signals.ts'
 import { adminRoutes } from './routes/admin.ts'
 import { keywordsRoutes } from './routes/keywords.ts'
+import { settingsRoutes } from './routes/settings.ts'
 import { authRoutes } from './routes/auth.ts'
 import { proxyRoutes } from './routes/proxy.ts'
 import { authMiddleware } from './middleware/auth.ts'
@@ -69,6 +70,7 @@ app.route('/', activityRoutes)
 app.route('/', keywordsRoutes)
 app.route('/', signalRoutes)
 app.route('/', adminRoutes)
+app.route('/', settingsRoutes)
 // /saved removed — use the Board's status=useful filter instead.
 
 serve({ fetch: app.fetch, port: config.port }, (info) => {

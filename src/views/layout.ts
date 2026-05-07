@@ -81,7 +81,7 @@ function setupModal(): Raw {
   </div>`
 }
 
-export function layout(opts: { title: string; body: Raw; activeNav?: 'board' | 'useful' | 'signals' | 'keywords' }): Raw {
+export function layout(opts: { title: string; body: Raw; activeNav?: 'board' | 'useful' | 'signals' | 'keywords' | 'settings' }): Raw {
   const { title, body, activeNav = 'board' } = opts
 
   const navItem = (href: string, label: string, key: string, iconName: string) => {
@@ -134,6 +134,7 @@ export function layout(opts: { title: string; body: Raw; activeNav?: 'board' | '
       [hidden] { display: none !important; }
       .htmx-indicator { display: none; }
       .htmx-request .htmx-indicator { display: inline-flex; }
+      .htmx-request .poller-run-label { display: none; }
       .htmx-request.htmx-request-target { opacity: 0.6; }
 
       /* ── FlowCore branded body background ── */
@@ -769,6 +770,7 @@ export function layout(opts: { title: string; body: Raw; activeNav?: 'board' | '
             ${navItem('/useful', 'Useful', 'useful', 'bookmark')}
             ${navItem('/keywords', 'Keywords', 'keywords', 'seo')}
             ${navItem('/signals', 'Signals', 'signals', 'broadcast')}
+            ${navItem('/settings', 'Settings', 'settings', 'cog')}
           </div>
         </nav>
       </div>
