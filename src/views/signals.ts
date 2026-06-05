@@ -120,7 +120,7 @@ function addCompetitorModal(): Raw {
           <h2 id="add-competitor-title" class="text-xl sm:text-2xl font-bold text-slate-900 leading-tight" style="font-family: 'Kumbh Sans', system-ui, sans-serif;">Add a competitor</h2>
           <p class="text-sm text-slate-500 mt-1">Track all of their channels in one shot. Empty fields are skipped.</p>
 
-          <form hx-post="/signals/competitor" class="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <form method="POST" action="/signals/competitor" class="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3" id="add-competitor-form">
             <div>
               <label class="block text-[11px] font-medium text-slate-500 mb-1">Competitor name <span class="text-rose-500">*</span></label>
               <input type="text" name="name" required maxlength="80" placeholder="Baker Brothers Plumbing"
@@ -158,7 +158,7 @@ function addCompetitorModal(): Raw {
             </div>
             <div class="sm:col-span-2 flex items-center justify-end gap-2 pt-1">
               <button type="button" data-article-close class="text-xs font-semibold text-slate-500 hover:text-slate-800 px-3 py-2">Cancel</button>
-              <button type="submit" class="fc-btn-primary text-sm font-semibold px-4 py-2 rounded-md whitespace-nowrap">+ Add competitor</button>
+              <button type="submit" class="fc-btn-primary text-sm font-semibold px-4 py-2 rounded-md whitespace-nowrap" onclick="this.dataset.origText=this.textContent;this.innerHTML='<span class=\\'inline-flex items-center gap-1.5\\'><svg class=\\'w-3.5 h-3.5 animate-spin\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\'><circle cx=\\'12\\' cy=\\'12\\' r=\\'10\\' stroke=\\'currentColor\\' stroke-width=\\'3\\' opacity=\\'0.25\\'/><path d=\\'M4 12a8 8 0 018-8\\' stroke=\\'currentColor\\' stroke-width=\\'3\\' stroke-linecap=\\'round\\'/></svg>Scraping…</span>';this.disabled=true;this.form.submit()">+ Add competitor</button>
             </div>
           </form>
         </div>
@@ -177,7 +177,7 @@ function addSingleModal(): Raw {
           <h2 id="add-single-title" class="text-xl sm:text-2xl font-bold text-slate-900 leading-tight" style="font-family: 'Kumbh Sans', system-ui, sans-serif;">Add a single signal</h2>
           <p class="text-sm text-slate-500 mt-1">One signal at a time — pick a type, give it a target, optionally tag it.</p>
 
-          <form hx-post="/signals" class="mt-5 grid grid-cols-1 gap-3">
+          <form method="POST" action="/signals" class="mt-5 grid grid-cols-1 gap-3" id="add-single-form">
             <div>
               <label class="block text-[11px] font-medium text-slate-500 mb-1">Type</label>
               <select name="type" required class="w-full text-sm border border-slate-200 hover:border-slate-300 rounded-md px-2 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors">
@@ -196,7 +196,7 @@ function addSingleModal(): Raw {
             </div>
             <div class="flex items-center justify-end gap-2 pt-1">
               <button type="button" data-article-close class="text-xs font-semibold text-slate-500 hover:text-slate-800 px-3 py-2">Cancel</button>
-              <button type="submit" class="fc-btn-primary text-sm font-semibold px-4 py-2 rounded-md whitespace-nowrap">+ Add signal</button>
+              <button type="submit" class="fc-btn-primary text-sm font-semibold px-4 py-2 rounded-md whitespace-nowrap" onclick="this.dataset.origText=this.textContent;this.innerHTML='<span class=\\'inline-flex items-center gap-1.5\\'><svg class=\\'w-3.5 h-3.5 animate-spin\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\'><circle cx=\\'12\\' cy=\\'12\\' r=\\'10\\' stroke=\\'currentColor\\' stroke-width=\\'3\\' opacity=\\'0.25\\'/><path d=\\'M4 12a8 8 0 018-8\\' stroke=\\'currentColor\\' stroke-width=\\'3\\' stroke-linecap=\\'round\\'/></svg>Scraping…</span>';this.disabled=true;this.form.submit()">+ Add signal</button>
             </div>
           </form>
         </div>
@@ -441,13 +441,17 @@ export function signalsPage(opts: {
   signalsByType: Record<string, number>
   pagination: PaginationOpts
   filters: { type: string | null; tag: string | null; search: string | null }
+  toast?: { msg: string; type: string }
 }): Raw {
-  const { signals, totalCount, filteredCount, signalsByType, pagination, filters } = opts
+  const { signals, totalCount, filteredCount, signalsByType, pagination, filters, toast } = opts
   const groups = groupSignals(signals)
   const competitorCount = groups.filter((g) => !g.isUntagged).length
 
   const body = html`
     <div class="max-w-6xl mx-auto pt-4">
+      ${toast ? html`<div class="mb-4 fc-toast ${toast.type} text-white text-sm font-medium px-4 py-3 rounded-lg shadow-lg flex items-center gap-2">
+        <span class="text-base">${toast.type === 'success' ? '✓' : '!'}</span> ${toast.msg}
+      </div>` : ''}
       <!-- Header: title + primary action -->
       <div class="mb-5 flex items-end justify-between gap-3 flex-wrap">
         <div>

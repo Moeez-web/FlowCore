@@ -192,7 +192,7 @@ function seoPill(filter: Filter, value: 'all' | 'gained' | 'lost', label: string
     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
   return html`<a href="${seoPillHref(filter, value)}"
      hx-get="${seoPillHref(filter, value)}"
-     hx-target="#feed"
+     hx-target="#keywords-content"
      hx-swap="innerHTML"
      hx-push-url="true"
      class="text-[11px] font-semibold px-3 py-1 rounded-full transition-colors ${cls}">${label}</a>`

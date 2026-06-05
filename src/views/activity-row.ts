@@ -155,11 +155,37 @@ function cardHeader(a: ActivityRow): Raw {
       ? html`<span class="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0 select-none cursor-default">
           <span class="text-sm leading-none">✓</span> Saved
         </span>`
-      : ''}
+      : a.status === 'skipped'
+        ? html`<span class="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-md bg-slate-100 text-slate-500 border border-slate-200 shrink-0 select-none cursor-default">
+            <span class="text-sm leading-none">✕</span> Skipped
+          </span>`
+        : ''}
   </div>`
 }
 
 function triageButtons(a: ActivityRow): Raw {
+  // Skipped — show Restore + Useful buttons
+  if (a.status === 'skipped') {
+    return html`<div class="flex gap-2"
+         hx-on:click="event.stopPropagation()">
+      <button type="button"
+              hx-post="/activities/${String(a.id)}/triage"
+              hx-vals='{"action":"unsave"}'
+              hx-target="#activity-${String(a.id)}"
+              hx-swap="outerHTML"
+              class="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 border-2 border-blue-300 bg-white text-blue-600 rounded-lg hover:bg-blue-50 active:scale-95 transition-all">
+        <span class="text-base leading-none">↩</span> Restore
+      </button>
+      <button type="button"
+              hx-post="/activities/${String(a.id)}/triage"
+              hx-vals='{"action":"useful"}'
+              hx-target="#activity-${String(a.id)}"
+              hx-swap="outerHTML"
+              class="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 border-2 border-green-500 bg-gradient-to-br from-green-50 to-emerald-100 text-green-700 rounded-lg hover:from-green-500 hover:to-emerald-600 hover:text-white hover:border-green-600 active:scale-95 transition-all shadow-sm">
+        <span class="text-base leading-none">✓</span> Useful
+      </button>
+    </div>`
+  }
   // Already saved on the board → Unsave + Remove. (Saved pill is in the card header.)
   if (a.status === 'useful') {
     return html`<div class="flex items-center gap-2 flex-wrap"
@@ -282,9 +308,9 @@ function blogHero(heroImage: string | null, topic: string | null, edge: 'card' |
 
 function cardWebsite(a: ActivityRow, p: Record<string, unknown>): Raw {
   const isBlog = a.activity_type === 'new_blog_post'
-  let domain = a.signal_target
+  let domain = a.signal_target ?? ''
   try { domain = new URL(String(a.source_url ?? '')).hostname.replace(/^www\./, '') } catch { /* keep */ }
-  const favicon = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`
+  const favicon = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=64` : ''
   const wordCount = typeof p['word_count'] === 'number' ? Number(p['word_count']) : null
   const previewText = String(p['first_paragraph'] ?? a.preview ?? '')
   const fullText = typeof p['full_text'] === 'string' ? String(p['full_text']) : null
@@ -342,7 +368,7 @@ function cardWebsite(a: ActivityRow, p: Record<string, unknown>): Raw {
 // markup convention: lines starting with "## " become <h3>, blank lines
 // separate paragraphs, everything else is a <p>. Modal is hidden by default
 // — a global click handler in layout.ts toggles the [hidden] attribute.
-function articleModal(a: ActivityRow, p: Record<string, unknown>, fullText: string, domain: string, heroImage: string | null, topic: string | null): Raw {
+function articleModal(a: ActivityRow, p: Record<string, unknown>, fullText: string, domain: string | null, heroImage: string | null, topic: string | null): Raw {
   const id = String(a.id)
   const wordCount = typeof p['word_count'] === 'number' ? Number(p['word_count']) : null
   const minutes = wordCount != null ? Math.max(1, Math.round(wordCount / 220)) : null
@@ -772,13 +798,13 @@ const BACKLINK_ACTIVITY_TYPES = new Set(['backlink_acquired', 'backlink_lost', '
 function visualType(a: ActivityRow): string {
   if (SEO_ACTIVITY_TYPES.has(a.activity_type)) return 'seo_keyword'
   if (BACKLINK_ACTIVITY_TYPES.has(a.activity_type)) return 'backlink_profile'
-  return a.signal_type
+  return a.signal_type ?? 'website'
 }
 
 function renderBody(a: ActivityRow, payload: Record<string, unknown>): Raw {
   if (SEO_ACTIVITY_TYPES.has(a.activity_type)) return cardSeoRank(a, payload)
   if (BACKLINK_ACTIVITY_TYPES.has(a.activity_type)) return cardBacklink(a, payload)
-  const fn = CARD_BODIES[a.signal_type] ?? CARD_BODIES['website']!
+  const fn = CARD_BODIES[a.signal_type ?? 'website'] ?? CARD_BODIES['website']!
   return fn(a, payload)
 }
 

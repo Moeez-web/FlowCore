@@ -1,22 +1,39 @@
-FROM node:22-bookworm-slim
+# ── Stage 1: Build ──
+FROM node:22-bookworm-slim AS builder
 
-# Native deps for better-sqlite3 compile + sqlite cli for ad-hoc DB inspection
 RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      python3 make g++ ca-certificates sqlite3 \
+ && apt-get install -y --no-install-recommends python3 make g++ \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install deps first for better layer caching
 COPY package.json package-lock.json* ./
 RUN npm ci --no-audit --no-fund
 
-# App source
+COPY tsconfig.json ./
+COPY tailwind.config.js ./
+COPY src ./src
+COPY public ./public
+
+RUN npm run build:css
+
+# ── Stage 2: Runtime ──
+FROM node:22-bookworm-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++ sqlite3 \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm ci --no-audit --no-fund
+
+COPY --from=builder /app/public ./public
 COPY tsconfig.json ./
 COPY src ./src
+COPY entrypoint.sh ./
 
-# Data directory — Railway volume mounts on top of this at runtime
 RUN mkdir -p /app/data
 
 ENV NODE_ENV=production

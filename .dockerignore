@@ -11,3 +11,4 @@ project-doc
 README.md
 .gitignore
 .railwayignore
+src/views/layout.ts.bak

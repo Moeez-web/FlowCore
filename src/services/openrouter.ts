@@ -4,16 +4,7 @@ import type { ActivityRow } from '../db/queries.ts'
 const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions'
 const TIMEOUT_MS = 20_000
 
-const SYSTEM_PROMPT = `You describe what a piece of content IS in one clear sentence. You do NOT give marketing advice, strategy, or recommendations. Just describe the content factually so someone scanning a feed knows what it is without opening it.
-
-Rules:
-- Exactly ONE sentence. No exceptions.
-- Be specific: mention names, numbers, topics, cities when available.
-- Describe what the content shows or says — not what it "means for the business."
-- For removed/deleted content, state what was removed.
-- For ads, describe the headline, copy angle, and CTA.
-- For videos/posts, describe the topic and notable engagement if available.
-- For website pages, describe the page topic, service, or location it targets.`
+const SYSTEM_PROMPT = `Summarize what this content is about in ONE short sentence. Focus on the key takeaway — what happened, what changed, or what's new. Be specific with names, numbers, and locations. No marketing advice or strategy. Just the main point.`
 
 export class OpenRouterError extends Error {
   constructor(message: string, public override readonly cause?: unknown) {

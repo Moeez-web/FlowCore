@@ -16,8 +16,8 @@ interface PollerDisplay {
 }
 
 const POLLER_DISPLAY: PollerDisplay[] = [
-  { name: 'zenrows',    label: 'ZenRows',    iconName: 'website',        intervalLabel: '7 days', intervalMs: config.pollers.zenrowsIntervalMs, description: 'Website content monitoring — detects new pages, homepage changes, and blog posts' },
-  { name: 'serper',     label: 'SERPER',     iconName: 'seo',            intervalLabel: '1 day',  intervalMs: config.pollers.serperIntervalMs,   description: 'SEO rank tracking — monitors Google SERP positions for tracked keywords' },
+  { name: 'firecrawl',   label: 'Website Scraping', iconName: 'website',        intervalLabel: '7 days', intervalMs: config.pollers.firecrawlIntervalMs, description: 'Website content monitoring — detects new pages, homepage changes, and blog posts' },
+  { name: 'serper',     label: 'SEO Keywords',      iconName: 'seo',            intervalLabel: '1 day',  intervalMs: config.pollers.serperIntervalMs,   description: 'SEO rank tracking — monitors Google SERP positions for tracked keywords' },
   { name: 'youtube',    label: 'YouTube',    iconName: 'youtube_shorts', intervalLabel: '7 days', intervalMs: config.pollers.youtubeIntervalMs,   description: '' },
   { name: 'tiktok',     label: 'TikTok',     iconName: 'tiktok',         intervalLabel: '7 days', intervalMs: config.pollers.tiktokIntervalMs,    description: '' },
   { name: 'instagram',  label: 'Instagram',  iconName: 'instagram',      intervalLabel: '7 days', intervalMs: config.pollers.instagramIntervalMs, description: '' },
@@ -29,6 +29,7 @@ function buildSingleStatus(display: PollerDisplay): PollerStatus {
   const lastRunIso = getSetting<string>(`poller_last_run:${display.name}`)
   const lastResult = getSetting<Record<string, unknown>>(`poller_last_result:${display.name}`) as PollerStatus['lastResult']
   const paused = isPollerPaused(display.name)
+  const running = getSetting<boolean>(`poller_running:${display.name}`) === true
 
   let nextRun: string | null = null
   if (lastRunIso && !paused) {
@@ -39,6 +40,7 @@ function buildSingleStatus(display: PollerDisplay): PollerStatus {
   return {
     ...display,
     paused,
+    running,
     lastRun: lastRunIso,
     nextRun,
     lastResult,
@@ -63,6 +65,14 @@ settingsRoutes.post('/settings/run/:name', async (c) => {
     return c.html(pollerRowHtml({ ...buildSingleStatus(display), lastResult: { fetched: 0, inserted: 0, skipped: 0, error: 'Poller not configured — missing API key', completedAt: new Date().toISOString() } }).value)
   }
 
+  // Prevent double-run
+  if (getSetting<boolean>(`poller_running:${name}`)) {
+    const display = POLLER_DISPLAY.find(d => d.name === name)!
+    return c.html(pollerRowHtml(buildSingleStatus(display)).value)
+  }
+
+  setSetting(`poller_running:${name}`, true)
+
   try {
     const result = await entry.run()
     setSetting(`poller_last_run:${name}`, new Date().toISOString())
@@ -75,6 +85,8 @@ settingsRoutes.post('/settings/run/:name', async (c) => {
       completedAt: new Date().toISOString(),
       error: msg,
     })
+  } finally {
+    setSetting(`poller_running:${name}`, false)
   }
 
   const display = POLLER_DISPLAY.find(d => d.name === name)!

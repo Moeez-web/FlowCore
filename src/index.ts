@@ -1,5 +1,7 @@
 import { serve } from '@hono/node-server'
+import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
+import { compress } from 'hono/compress'
 import { config } from './config.ts'
 import { migrate } from './db/migrate.ts'
 import { seed } from './seed/seed.ts'
@@ -11,9 +13,9 @@ import { keywordsRoutes } from './routes/keywords.ts'
 import { settingsRoutes } from './routes/settings.ts'
 import { authRoutes } from './routes/auth.ts'
 import { proxyRoutes } from './routes/proxy.ts'
+import { cronRoutes } from './routes/cron.ts'
 import { authMiddleware } from './middleware/auth.ts'
-import { startRetentionJob } from './services/retention.ts'
-import { startScheduler } from './pollers/scheduler.ts'
+import { registerPollers } from './pollers/scheduler.ts'
 import { seedKeywords } from './db/queries.ts'
 import { DEFAULT_KEYWORDS } from './pollers/serper.ts'
 
@@ -38,27 +40,42 @@ if (process.env.FORCE_RESEED === '1') {
     db.exec(`DELETE FROM sqlite_sequence WHERE name IN ('signals', 'activities', 'tags');`)
   }
   console.log('[FORCE_RESEED] cleared signals/activities/tags — reseeding…')
+  // Also wipe keywords for a completely clean start
+  db.exec(`DELETE FROM keywords`)
+  const hasKwSeq = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'`).get()
+  if (hasKwSeq) {
+    db.exec(`DELETE FROM sqlite_sequence WHERE name IN ('keywords');`)
+  }
 }
 
-const seedResult = seed({ force: false })
-if (seedResult.signals > 0) {
-  console.log(`seeded ${seedResult.signals} signals, ${seedResult.activities} activities`)
+// Only seed in development (never in production)
+if (process.env.NODE_ENV !== 'production') {
+  const seedResult = seed({ force: false })
+  if (seedResult.signals > 0) {
+    console.log(`seeded ${seedResult.signals} signals, ${seedResult.activities} activities`)
+  }
+
+  const kwSeeded = seedKeywords(DEFAULT_KEYWORDS)
+  if (kwSeeded > 0) {
+    console.log(`seeded ${kwSeeded} SEO keywords`)
+  }
 }
 
-const kwSeeded = seedKeywords(DEFAULT_KEYWORDS)
-if (kwSeeded > 0) {
-  console.log(`seeded ${kwSeeded} SEO keywords`)
-}
-
-startRetentionJob()
-startScheduler()
+// Register pollers (no timers — they're triggered via /api/cron/* endpoints)
+registerPollers()
 
 const app = new Hono()
+
+app.use('*', compress())
+app.use('/public/*', serveStatic({ root: './' }))
 
 app.get('/healthz', (c) => c.text('ok'))
 
 // Proxy route is public — the video player needs unauthenticated access.
 app.route('/', proxyRoutes)
+
+// Cron endpoints — public but protected by CRON_SECRET query param.
+app.route('/', cronRoutes)
 
 // Auth routes (login, logout) are public — middleware allow-lists them.
 app.route('/', authRoutes)

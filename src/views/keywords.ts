@@ -76,7 +76,7 @@ export function keywordsPage(opts: {
 
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
         <!-- Left: keyword management -->
-        <div class="lg:col-span-4">
+        <div class="lg:col-span-5">
           <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
             <div class="flex items-center gap-2 mb-3">
               <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-purple-100 text-purple-600">${icon('seo')}</span>
@@ -111,7 +111,7 @@ export function keywordsPage(opts: {
         </div>
 
         <!-- Right: SEO rank tracker card -->
-        <div class="lg:col-span-8" id="keywords-content">
+        <div class="lg:col-span-7" id="keywords-content">
           ${seoCard}
         </div>
       </div>

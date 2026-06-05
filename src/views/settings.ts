@@ -10,6 +10,7 @@ export interface PollerStatus {
   intervalMs: number
   description: string
   paused: boolean
+  running: boolean
   lastRun: string | null
   nextRun: string | null
   lastResult: {
@@ -122,7 +123,9 @@ export function pollerRowHtml(s: PollerStatus): Raw {
   const nextRunDisplay = paused ? 'Paused' : (!nextRun ? '--' : relativeTimeFromNow(nextRun))
 
   let statusDot: Raw
-  if (paused) {
+  if (s.running) {
+    statusDot = html`<span class="flex items-center gap-1.5 text-xs font-semibold text-blue-600"><svg class="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/><path d="M4 12a8 8 0 018-8" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>Running</span>`
+  } else if (paused) {
     statusDot = html`<span class="flex items-center gap-1.5 text-xs font-semibold text-amber-600"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Paused</span>`
   } else if (hasError) {
     statusDot = html`<span class="flex items-center gap-1.5 text-xs font-semibold text-red-600"><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>Error</span>`
@@ -132,17 +135,19 @@ export function pollerRowHtml(s: PollerStatus): Raw {
     statusDot = html`<span class="flex items-center gap-1.5 text-xs font-semibold text-emerald-600"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Active</span>`
   }
 
-  const lastResultHtml: Raw = neverRun || !lastResult
-    ? html`<span class="text-xs text-slate-400">--</span>`
-    : hasError
-      ? html`<span class="text-xs text-red-500 break-all" title="${lastResult.error!}">${lastResult.error!.length > 50 ? lastResult.error!.slice(0, 50) + '...' : lastResult.error}</span>`
-      : html`<div class="flex items-center gap-2 text-[11px] font-medium">
-          <span class="text-blue-600" title="Fetched">${String(lastResult.fetched)} <span class="text-blue-300">fetched</span></span>
-          <span class="text-slate-300">|</span>
-          <span class="text-emerald-600" title="Inserted">${String(lastResult.inserted)} <span class="text-emerald-300">new</span></span>
-          <span class="text-slate-300">|</span>
-          <span class="text-slate-400" title="Skipped duplicates">${String(lastResult.skipped)} <span class="text-slate-300">dupes</span></span>
-        </div>`
+  const lastResultHtml: Raw = s.running
+    ? html`<span class="text-xs text-blue-500 animate-pulse">In progress...</span>`
+    : neverRun || !lastResult
+      ? html`<span class="text-xs text-slate-400">--</span>`
+      : hasError
+        ? html`<span class="text-xs text-red-500 break-all" title="${lastResult.error!}">${lastResult.error!.length > 50 ? lastResult.error!.slice(0, 50) + '...' : lastResult.error}</span>`
+        : html`<div class="flex items-center gap-2 text-[11px] font-medium">
+            <span class="text-blue-600" title="Fetched">${String(lastResult.fetched)} <span class="text-blue-300">fetched</span></span>
+            <span class="text-slate-300">|</span>
+            <span class="text-emerald-600" title="Inserted">${String(lastResult.inserted)} <span class="text-emerald-300">new</span></span>
+            <span class="text-slate-300">|</span>
+            <span class="text-slate-400" title="Skipped duplicates">${String(lastResult.skipped)} <span class="text-slate-300">dupes</span></span>
+          </div>`
 
   return html`
     <tr id="poller-row-${name}" class="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors group">
@@ -193,8 +198,9 @@ export function pollerRowHtml(s: PollerStatus): Raw {
                   hx-target="#poller-row-${name}"
                   hx-swap="outerHTML"
                   hx-disabled-elt="this"
-                  title="${hasError ? 'Retry now' : 'Run now'}"
-                  class="fc-run-btn inline-flex items-center justify-center w-7 h-7 rounded-md ${hasError ? 'text-red-500 hover:bg-red-50 hover:border-red-200' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'} border border-transparent transition-colors ${paused ? 'hidden' : ''}">
+                  title="${s.running ? 'Running...' : hasError ? 'Retry now' : 'Run now'}"
+                  ${s.running ? 'disabled' : ''}
+                  class="fc-run-btn inline-flex items-center justify-center w-7 h-7 rounded-md ${s.running ? 'text-slate-300 cursor-not-allowed' : hasError ? 'text-red-500 hover:bg-red-50 hover:border-red-200' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'} border border-transparent transition-colors ${paused ? 'hidden' : ''}">
             <span class="htmx-indicator">
               <svg class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
                 <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>

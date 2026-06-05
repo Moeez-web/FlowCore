@@ -30,7 +30,7 @@ const BACKLINK_ACTIVITY_TYPES = new Set(['backlink_acquired', 'backlink_lost', '
 function visualType(a: ActivityRow): string {
   if (SEO_ACTIVITY_TYPES.has(a.activity_type)) return 'seo_keyword'
   if (BACKLINK_ACTIVITY_TYPES.has(a.activity_type)) return 'backlink_profile'
-  return a.signal_type
+  return a.signal_type ?? 'website'
 }
 
 // AI summary block.
@@ -39,14 +39,9 @@ function visualType(a: ActivityRow): string {
 export function summarySection(a: ActivityRow, opts: { error?: string; autoOpen?: boolean } = {}): Raw {
   const id = String(a.id)
   if (a.summary_text && a.summary_text.length > 0) {
-    return html`<div id="summary-section-${id}" class="inline-flex items-center">
-      <button type="button"
-              data-summary-toggle-btn
-              data-summary-text="${a.summary_text.replace(/"/g, '&quot;').replace(/</g, '&lt;')}"
-              class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 border border-slate-200 text-slate-500 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 transition-colors"
-              aria-label="Show summary">
-        ${icon('info')}
-      </button>
+    return html`<div id="summary-section-${id}" class="flex items-start gap-2 rounded-lg bg-blue-50 border border-blue-100 px-3 py-2.5">
+      <span class="inline-flex items-center justify-center w-5 h-5 rounded-md bg-blue-100 text-blue-500 shrink-0 mt-0.5">${icon('sparkle')}</span>
+      <p class="text-[13px] text-slate-700 leading-relaxed">${a.summary_text}</p>
     </div>`
   }
 
@@ -143,7 +138,7 @@ export function activityDetail(a: ActivityRow): Raw {
   const vt = visualType(a)
   const tint = TYPE_TINT[vt] ?? 'bg-slate-100 text-slate-700'
   const iconKey = TYPE_ICON[vt] ?? 'website'
-  const typeLabel = SIGNAL_TYPE_LABELS[a.signal_type] ?? a.signal_type
+  const typeLabel = SIGNAL_TYPE_LABELS[a.signal_type ?? 'website'] ?? a.signal_type ?? 'Unknown'
   const detected = new Date(a.detected_at).toLocaleString('en-US', {
     weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
   })

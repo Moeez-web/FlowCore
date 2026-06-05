@@ -960,7 +960,7 @@ function emitRealAnchors(signals: SeedSignal[], now: number): SeedActivity[] {
     const detected = new Date(now - counter * stepMs).toISOString()
     // Merge stored full article body + hero image + topic into the payload
     // when we have them (only for the website-channel real anchors we
-    // WebFetched). Production ZenRows ingestion writes the same shape into
+    // WebFetched). Production Firecrawl ingestion writes the same shape into
     // raw_payload (full_text, hero_image_url, blog_topic).
     const articleText = BLOG_CONTENT[a.source_url]
     const heroImage = BLOG_IMAGES[a.source_url]

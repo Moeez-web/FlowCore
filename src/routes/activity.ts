@@ -77,10 +77,8 @@ activityRoutes.post('/activities/:id/triage', async (c) => {
       })()
     : statusCountOob(filter)
 
-  if (action === 'skip') {
-    // Row is gone from DB. Return just the OOB count update — the card element
-    // is removed by the empty swap, and htmx processes the OOB spans separately.
-    return c.html(counts)
+  if (action === 'skip' && result.activity) {
+    return c.html(activityRow(result.activity, { context: 'board' }).value + counts)
   }
 
   if (action === 'unsave' && result.activity) {

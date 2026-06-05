@@ -21,6 +21,7 @@ import {
 } from '../db/queries.ts'
 import { html } from '../lib/html.ts'
 import { signalsPage, signalsTableFragment, signalRow } from '../views/signals.ts'
+import { runPollersForSignalType } from '../pollers/scheduler.ts'
 
 export const signalRoutes = new Hono()
 
@@ -61,6 +62,9 @@ function parseTypeParam(raw: unknown): SignalType | null {
 
 signalRoutes.get('/signals', (c) => {
   const page = parsePage(c.req.query('page'))
+  const added = c.req.query('added') === '1'
+  const errorMsg = c.req.query('error')
+  const toastMsg = c.req.query('msg') ?? (added ? 'Signal added & scraped' : undefined)
   const typeFilter = parseTypeParam(c.req.query('type'))
   const tagRaw = String(c.req.query('tag') ?? '').trim()
   const tagFilter = tagRaw.length > 0 && tagRaw.length <= 80 ? tagRaw : null
@@ -88,6 +92,7 @@ signalRoutes.get('/signals', (c) => {
 
   return c.html(signalsPage({
     signals, totalCount, filteredCount, signalsByType, pagination, filters,
+    toast: errorMsg ? { msg: errorMsg, type: 'error' } : added && toastMsg ? { msg: toastMsg, type: 'success' } : undefined,
   }).value)
 })
 
@@ -120,13 +125,25 @@ signalRoutes.post('/signals/competitor', async (c) => {
   const yt = String(form['youtube'] ?? '').trim()
   if (yt) channels.push({ type: 'youtube_channel', target: yt.startsWith('@') ? yt : `@${yt}` })
 
+  // Check if ALL channels already exist
+  let allExist = true
+  for (const ch of channels) {
+    const existing = getSignalByTypeAndTarget(ch.type, ch.target)
+    if (!existing) { allExist = false; break }
+  }
+  if (allExist) {
+    return c.redirect(`/signals?error=${encodeURIComponent(`All channels for "${name}" are already tracked`)}`, 302)
+  }
+
   let created = 0
   let skipped = 0
   const tag = name
+  const createdTypes = new Set<string>()
   for (const ch of channels) {
     try {
       createSignal({ type: ch.type, target: ch.target, tags: [tag] })
       created++
+      createdTypes.add(ch.type)
     } catch (err) {
       if (/UNIQUE/.test((err as Error).message)) {
         // Already tracked — make sure the competitor tag is on it so it
@@ -139,17 +156,16 @@ signalRoutes.post('/signals/competitor', async (c) => {
       }
     }
   }
+  // Scrape new signals immediately (await so data is ready on refresh)
+  for (const t of createdTypes) {
+    try { await runPollersForSignalType(t) } catch { /* best effort */ }
+  }
 
-  // HX-Refresh forces a full-page reload so the type-count grid + table all
-  // reflect the new state in one shot. Trigger a toast via HX-Trigger before
-  // the refresh fires so the user gets confirmation; layout.ts persists the
-  // toast across reload via sessionStorage.
+  // Redirect — closes modal and refreshes page natively
   const toastMsg = skipped > 0
-    ? `Added ${created} channel${created === 1 ? '' : 's'} for ${name} (${skipped} already tracked)`
-    : `Added ${created} channel${created === 1 ? '' : 's'} for ${name}`
-  c.header('HX-Trigger', JSON.stringify({ 'fc:toast-after-refresh': { msg: toastMsg, type: 'success' } }))
-  c.header('HX-Refresh', 'true')
-  return c.body('', 200)
+    ? `Added+${created}+channels+for+${encodeURIComponent(name)}+(${skipped}+already+tracked)`
+    : `Added+${created}+channels+for+${encodeURIComponent(name)}`
+  return c.redirect(`/signals?added=1&msg=${toastMsg}`, 302)
 })
 
 signalRoutes.post('/signals', async (c) => {
@@ -166,15 +182,16 @@ signalRoutes.post('/signals', async (c) => {
   if (!parsed.success) return c.text(`Invalid: ${parsed.error.issues.map((i) => i.message).join(', ')}`, 400)
   try {
     createSignal(parsed.data)
+    // Scrape immediately (await so data is ready on refresh)
+    try { await runPollersForSignalType(parsed.data.type) } catch { /* best effort */ }
   } catch (err) {
-    if (/UNIQUE/.test((err as Error).message)) return c.text('That signal already exists.', 409)
+    if (/UNIQUE/.test((err as Error).message)) {
+      return c.redirect(`/signals?error=${encodeURIComponent('That signal already exists')}`, 302)
+    }
     throw err
   }
-  // Refresh the page so the new row lands in the right competitor group and
-  // the type counts update.
-  c.header('HX-Trigger', JSON.stringify({ 'fc:toast-after-refresh': { msg: 'Signal added', type: 'success' } }))
-  c.header('HX-Refresh', 'true')
-  return c.body('', 200)
+  // Use redirect — HTMX follows 302 natively with full page navigation
+  return c.redirect('/signals?added=1', 302)
 })
 
 // Per-signal tag operations

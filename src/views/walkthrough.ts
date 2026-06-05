@@ -203,24 +203,19 @@ export function walkthroughPage(opts: { error?: string; startStep?: number } = {
         <div class="fc-login">
           <p class="fc-login-eyebrow">Sign in</p>
           <h2>Welcome back.</h2>
-          <p class="fc-login-sub">Demo credentials are pre-filled — just hit sign in.</p>
+          <p class="fc-login-sub">Enter your credentials to access the dashboard.</p>
           ${errorBlock}
           <form method="POST" action="/login" class="fc-login-form">
             <label>
               <span class="fc-login-label">Email</span>
-              <input type="email" name="email" required value="${demoEmail}" autocomplete="email" />
+              <input type="email" name="email" required placeholder="you@company.com" autocomplete="email" />
             </label>
             <label>
               <span class="fc-login-label">Password</span>
-              <input type="password" name="password" required value="${demoPassword}" autocomplete="current-password" />
+              <input type="password" name="password" required autocomplete="current-password" />
             </label>
             <button type="submit" class="fc-btn-primary fc-login-submit">Sign in →</button>
           </form>
-          <div class="fc-login-creds">
-            <p class="fc-login-creds-label">Demo credentials</p>
-            <p>Email: <strong>${demoEmail}</strong></p>
-            <p>Password: <strong>${demoPassword}</strong></p>
-          </div>
           <p class="fc-login-foot">Session valid 7 days · Guided tour fires after sign in</p>
         </div>
       </div>

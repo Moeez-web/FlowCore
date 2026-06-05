@@ -1,5 +1,5 @@
 // Real article bodies for the website blog anchors. Fetched once via WebFetch
-// and baked into the seed. When ZenRows ingestion is wired in production, the
+// and baked into the seed. When Firecrawl ingestion is wired in production, the
 // scraper writes the same shape (full_text + last_fetched_at + content_hash)
 // into raw_payload_json — no UI changes needed.
 //
@@ -9,7 +9,7 @@
 // Hero image URLs for the blog anchors. Some sites JS-render their content
 // (Wrench Group's Baker Brothers / Berkeys), so static fetches return no
 // images — those URLs are absent here and the card falls back to a topic-
-// themed gradient placeholder. ZenRows in production will be able to grab
+// themed gradient placeholder. Firecrawl in production will be able to grab
 // the real og:image / first content image once it's running headed.
 export const BLOG_IMAGES: Record<string, string> = {
   'https://strittmatters.com/blog/common-water-heater-problems-and-troubleshooting-tips/':

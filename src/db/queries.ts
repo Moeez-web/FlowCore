@@ -213,6 +213,8 @@ export function createSignal(s: NewSignal): SignalRow {
 }
 
 export function deleteSignal(id: number): boolean {
+  db.prepare(`UPDATE activities SET signal_id = NULL WHERE signal_id = ?`).run(id)
+  db.prepare(`DELETE FROM signal_tags WHERE signal_id = ?`).run(id)
   const result = db.prepare(`DELETE FROM signals WHERE id = ?`).run(id)
   return result.changes > 0
 }
@@ -335,12 +337,12 @@ export interface ActivityRow {
   summary_text: string | null
   summary_model: string | null
   summary_generated_at: string | null
-  status: 'new' | 'useful'
+  status: 'new' | 'useful' | 'skipped'
   status_changed_at: string | null
   dedup_key: string
-  // joined from signals
-  signal_type: SignalType
-  signal_target: string
+  // joined from signals (nullable — signal may have been deleted)
+  signal_type: SignalType | null
+  signal_target: string | null
   signal_tags: string[]   // joined from signal_tags + tags
   signal_vertical: string | null
   signal_tier: string | null
@@ -362,10 +364,11 @@ const ACTIVITY_BASE_SELECT_RAW = `
     s.tier      AS signal_tier,
     COALESCE(
       (SELECT GROUP_CONCAT(t.name, '|') FROM signal_tags st JOIN tags t ON t.id = st.tag_id WHERE st.signal_id = s.id ORDER BY t.name),
+      CASE WHEN a.signal_id IS NULL THEN '' ELSE '' END,
       ''
     ) AS signal_tags_concat
   FROM activities a
-  JOIN signals s ON s.id = a.signal_id
+  LEFT JOIN signals s ON s.id = a.signal_id
 `
 
 function hydrateActivity(r: RawActivityRow): ActivityRow {
@@ -417,7 +420,7 @@ export function getActivitiesAfterCursor(
 export function getSavedActivitiesAfterCursor(
   opts: { typeFilter?: SignalType | null; cursor?: string; limit?: number } = {},
 ): ActivityRow[] {
-  let where = `WHERE a.status = 'useful'`
+  let where = `WHERE a.status = 'useful' AND a.removed_at IS NULL`
   const params: unknown[] = []
   const extraParams: unknown[] = []
   if (opts.typeFilter) {
@@ -457,21 +460,21 @@ export function countActivities(filter: Filter): number {
   const row = db.prepare(`
     SELECT COUNT(*) AS n
     FROM activities a
-    JOIN signals s ON s.id = a.signal_id
+    LEFT JOIN signals s ON s.id = a.signal_id
     ${where}
   `).get(...params) as { n: number }
   return row.n
 }
 
 export function getActivityById(id: number): ActivityRow | null {
-  const row = db.prepare(`${ACTIVITY_BASE_SELECT} WHERE a.id = ?`).get(id) as RawActivityRow | undefined
+  const row = db.prepare(`${ACTIVITY_BASE_SELECT} WHERE a.id = ? AND a.removed_at IS NULL`).get(id) as RawActivityRow | undefined
   return row ? hydrateActivity(row) : null
 }
 
 export function getSavedActivities(
   opts: { typeFilter?: SignalType | null; page?: number; limit?: number } = {},
 ): ActivityRow[] {
-  let where = `WHERE a.status = 'useful'`
+  let where = `WHERE a.status = 'useful' AND a.removed_at IS NULL`
   const params: unknown[] = []
   if (opts.typeFilter) {
     where += ` AND s.type = ?`
@@ -489,7 +492,7 @@ export function getSavedActivities(
 }
 
 export function countSavedActivities(opts: { typeFilter?: SignalType | null } = {}): number {
-  let where = `WHERE status = 'useful'`
+  let where = `WHERE status = 'useful' AND removed_at IS NULL`
   const params: unknown[] = []
   if (opts.typeFilter) {
     where += ` AND signal_id IN (SELECT id FROM signals WHERE type = ?)`
@@ -507,14 +510,18 @@ export interface TriageResult {
   deleted?: boolean
 }
 
-// useful  → status='useful', remains in DB (visible on /saved)
-// unsave  → status='new'    (only meaningful from /saved view)
-// skip    → HARD DELETE row from activities
+// useful  → status='useful', kept forever
+// unsave  → status='new'    (restores from any state)
+// skip    → status='skipped' (soft delete, pruned by retention after 30 days)
 export function triageActivity(id: number, action: ActivityTriageAction): TriageResult | null {
   if (action === 'skip') {
-    const r = db.prepare(`DELETE FROM activities WHERE id = ?`).run(id)
+    const now = new Date().toISOString()
+    const r = db
+      .prepare(`UPDATE activities SET status = 'skipped', status_changed_at = ? WHERE id = ?`)
+      .run(now, id)
     if (r.changes === 0) return null
-    return { action, deleted: true }
+    const activity = getActivityById(id)
+    return activity ? { action, activity } : null
   }
 
   const newStatus = action === 'useful' ? 'useful' : 'new'
@@ -600,8 +607,9 @@ export function getSeoKeywordSummary(days: number): Map<string, SeoKeywordEntry[
         s.target
       ) AS competitor
     FROM activities a
-    JOIN signals s ON s.id = a.signal_id
+    LEFT JOIN signals s ON s.id = a.signal_id
     WHERE a.activity_type IN ('keyword_rank_gain', 'keyword_rank_loss')
+      AND a.removed_at IS NULL
       AND a.detected_at >= datetime('now', ?)
     ORDER BY a.detected_at DESC
   `).all(`-${days} days`) as Array<{
@@ -722,8 +730,9 @@ export function getBacklinkSummary(days: number): BacklinkEntry[] {
         s.target
       ) AS competitor
     FROM activities a
-    JOIN signals s ON s.id = a.signal_id
+    LEFT JOIN signals s ON s.id = a.signal_id
     WHERE a.activity_type IN ('backlink_acquired', 'backlink_lost', 'anchor_text_changed')
+      AND a.removed_at IS NULL
       AND a.detected_at >= datetime('now', ?)
     ORDER BY a.detected_at DESC
   `).all(`-${days} days`) as Array<{
@@ -787,9 +796,11 @@ export function pruneOldActivities(retentionDays: number): number {
   const r = db
     .prepare(
       `DELETE FROM activities
-        WHERE status != 'useful'
-          AND detected_at < datetime('now', ?)`,
+        WHERE (
+          (status != 'useful' AND removed_at IS NULL AND detected_at < datetime('now', ?))
+          OR (removed_at IS NOT NULL AND removed_at < datetime('now', ?))
+        )`,
     )
-    .run(`-${days} days`)
+    .run(`-${days} days`, `-${days} days`)
   return r.changes
 }

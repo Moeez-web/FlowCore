@@ -15,7 +15,7 @@ export type Channel = SignalTypeFilter
 export const ALL_STATUSES = ['all', 'new', 'useful'] as const
 export type StatusFilter = typeof ALL_STATUSES[number]
 
-export const DATE_PRESETS = [1, 3, 7, 30] as const
+export const DATE_PRESETS = [1, 7, 30] as const
 export type DayPreset = typeof DATE_PRESETS[number]
 
 export interface Filter {
@@ -102,6 +102,8 @@ export function buildWhere(f: Filter): { sql: string; params: unknown[] } {
 
   // Exclude SEO/backlink activities from regular feed — they live on the Keywords page
   clauses.push(`a.activity_type NOT IN ('keyword_rank_gain', 'keyword_rank_loss', 'backlink_acquired', 'backlink_lost', 'anchor_text_changed')`)
+  // Exclude soft-deleted activities
+  clauses.push(`a.removed_at IS NULL`)
   if (signal_types.length > 0 && signal_types.length < ALL_SIGNAL_TYPES.length) {
     const placeholders = signal_types.map(() => '?').join(',')
     clauses.push(`s.type IN (${placeholders})`)

@@ -9,12 +9,12 @@ export const config = {
   schemaPath: resolve(repoRoot, 'src/db/schema.sql'),
   openRouter: {
     apiKey: process.env.OPENROUTER_API_KEY ?? '',
-    sotaModel: process.env.OPENROUTER_SOTA_MODEL ?? 'google/gemini-2.5-flash',
+    sotaModel: process.env.OPENROUTER_SOTA_MODEL ?? 'google/gemini-3.1-flash-lite',
   },
   auth: {
     jwtSecret: process.env.JWT_SECRET ?? 'dev-only-change-me-in-production-please',
-    demoEmail: process.env.AUTH_DEMO_EMAIL ?? 'demo@flowcorewater.com',
-    demoPassword: process.env.AUTH_DEMO_PASSWORD ?? 'flowcore2026',
+    demoEmail: process.env.AUTH_EMAIL ?? 'user@flowcorewater.com',
+    demoPassword: process.env.AUTH_PASSWORD ?? 'changeme',
     cookieSecure: process.env.NODE_ENV === 'production',
   },
   // Resend: when both keys are set, /admin/setup submissions get emailed
@@ -25,9 +25,9 @@ export const config = {
     notifyEmail: process.env.SETUP_NOTIFY_EMAIL ?? '',
     fromAddress: process.env.SETUP_FROM_EMAIL ?? 'FlowCore Sensor <onboarding@resend.dev>',
   },
-  zenrows: {
-    apiKey: process.env.ZENROWS_API_KEY ?? '',
-    timeoutMs: 45_000,
+  firecrawl: {
+    apiKey: process.env.FIRECRAWL_API_KEY ?? '',
+    timeoutMs: 60_000,
   },
   serper: {
     apiKey: process.env.SERP_API_KEY ?? '',
@@ -41,9 +41,11 @@ export const config = {
     apiToken: process.env.APIFY_API_TOKEN ?? '',
     timeoutMs: 180_000,
   },
+  cronSecret: process.env.CRON_SECRET ?? '',
+  retentionDays: Number(process.env.RETENTION_DAYS ?? 30),
   pollers: {
     enabled: process.env.POLLERS_ENABLED !== '0',
-    zenrowsIntervalMs: Number(process.env.ZENROWS_INTERVAL_MS ?? 7 * 24 * 60 * 60 * 1000),
+    firecrawlIntervalMs: Number(process.env.FIRECRAWL_INTERVAL_MS ?? 7 * 24 * 60 * 60 * 1000),
     serperIntervalMs: Number(process.env.SERPER_INTERVAL_MS ?? 24 * 60 * 60 * 1000),
     serpstatIntervalMs: Number(process.env.SERPSTAT_INTERVAL_MS ?? 24 * 60 * 60 * 1000),
     youtubeIntervalMs: Number(process.env.YOUTUBE_INTERVAL_MS ?? 7 * 24 * 60 * 60 * 1000),

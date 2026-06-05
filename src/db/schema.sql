@@ -45,7 +45,7 @@ CREATE INDEX IF NOT EXISTS idx_signal_tags_tag    ON signal_tags(tag_id);
 
 CREATE TABLE IF NOT EXISTS activities (
   id                    INTEGER PRIMARY KEY,
-  signal_id             INTEGER NOT NULL REFERENCES signals(id) ON DELETE CASCADE,
+  signal_id             INTEGER,
   activity_type         TEXT NOT NULL,
   title                 TEXT NOT NULL,
   preview               TEXT,
@@ -57,9 +57,10 @@ CREATE TABLE IF NOT EXISTS activities (
   summary_model         TEXT,
   summary_generated_at  TEXT,
   status                TEXT NOT NULL DEFAULT 'new'
-                        CHECK (status IN ('new', 'useful')),
+                        CHECK (status IN ('new', 'useful', 'skipped')),
   status_changed_at     TEXT,
   dedup_key             TEXT NOT NULL,
+  removed_at            TEXT,
   created_at            TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (signal_id, dedup_key)
 );
